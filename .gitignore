@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.zip
+results/
+videos/
+*.pth
+*.pt
+*.png
+*.jpg
+*.pdf

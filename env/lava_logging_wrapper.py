@@ -9,36 +9,35 @@ class LavaLoggingWrapper(gym.Wrapper):
         self.episode_length = 0
         self.episode_violations = 0
         self.episode_success = 0
-
-        self.global_visit_counts = None
+        self._visit_counts = None
         self._init_visit_map()
 
     def _init_visit_map(self):
         grid = self.unwrapped.grid
         if grid is not None:
-            self.global_visit_counts = np.zeros((grid.width, grid.height), dtype=np.int32)
-        else:
-            self.global_visit_counts = None
+            self._visit_counts = np.zeros((grid.width, grid.height), dtype=np.int32)
+
+    @property
+    def visit_counts(self) -> np.ndarray:
+
+        return self._visit_counts
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-
         self.episode_reward = 0.0
         self.episode_length = 0
         self.episode_violations = 0
         self.episode_success = 0
-
-        if self.global_visit_counts is None:
+        if self._visit_counts is None:
             self._init_visit_map()
-
         self._log_visit()
         return obs, info
 
     def _log_visit(self):
-        if self.global_visit_counts is None:
+        if self._visit_counts is None:
             return
         x, y = self.unwrapped.agent_pos
-        self.global_visit_counts[x, y] += 1
+        self._visit_counts[x, y] += 1
 
     def _on_lava(self):
         x, y = self.unwrapped.agent_pos
@@ -52,15 +51,12 @@ class LavaLoggingWrapper(gym.Wrapper):
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
-
         self.episode_reward += float(reward)
         self.episode_length += 1
-
         self._log_visit()
 
         if self._on_lava():
             self.episode_violations += 1
-
         if self._on_goal():
             self.episode_success = 1
 

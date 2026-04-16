@@ -2,44 +2,51 @@ import numpy as np
 from minigrid.wrappers import FlatObsWrapper
 import gymnasium as gym
 
-from env.lava_logging_wrapper import LavaStatsWrapper
+from env.lava_logging_wrapper import LavaLoggingWrapper
 
 
 def make_eval_env(env_id, seed):
     env = gym.make(env_id)
     env.reset(seed=seed)
     env.action_space.seed(seed)
-    env = LavaStatsWrapper(env)
+    env = LavaLoggingWrapper(env)
     env = FlatObsWrapper(env)
     return env
 
 
-def evaluate_model(model, env_id, seed, n_eval_episodes=20):
+def evaluate_model(model, env_id, seed=0, n_eval_episodes=20):
     rewards = []
     lengths = []
     violations = []
     successes = []
 
+    env = gym.make(env_id)
+    env.reset(seed=seed)
+    env.action_space.seed(seed)
+    env = FlatObsWrapper(env)
+    env = LavaLoggingWrapper(env)
+
     for ep in range(n_eval_episodes):
-        env = make_eval_env(env_id, seed + 1000 + ep)
-        obs, _ = env.reset()
+        obs, _ = env.reset(seed=seed + ep)
         done = False
-        truncated = False
 
-        while not (done or truncated):
+        while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
 
-        rewards.append(env.unwrapped.ep_reward)
-        lengths.append(env.unwrapped.ep_length)
-        violations.append(env.unwrapped.ep_violations)
-        successes.append(env.unwrapped.ep_success)
-        env.close()
+            if done:
+                rewards.append(info.get("episode_reward", 0.0))
+                lengths.append(info.get("episode_length", 0))
+                violations.append(info.get("episode_violations", 0))
+                successes.append(info.get("episode_success", 0))
+
+    env.close()
 
     return {
-        "eval_reward_mean": float(np.mean(rewards)),
-        "eval_reward_std": float(np.std(rewards)),
-        "eval_length_mean": float(np.mean(lengths)),
-        "eval_violations_mean": float(np.mean(violations)),
+        "eval_mean_reward": float(np.mean(rewards)),
+        "eval_std_reward": float(np.std(rewards)),
+        "eval_mean_length": float(np.mean(lengths)),
+        "eval_mean_violations": float(np.mean(violations)),
         "eval_success_rate": float(np.mean(successes)),
     }

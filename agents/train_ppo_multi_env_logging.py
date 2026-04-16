@@ -13,6 +13,9 @@ from env.lava_logging_wrapper import LavaLoggingWrapper
 from metrics.training_logger import EpisodeCSVLogger
 from metrics.plot_results import plot_training_curves, plot_visit_heatmap
 
+import random
+import torch
+
 
 BASE_DIR = "results/vanilla_ppo"
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -24,12 +27,15 @@ ENV_IDS = [
     "MiniGrid-LavaGapS6-v0",
     "MiniGrid-LavaGapS7-v0",
 ]
-TARGET_EPISODES = 200
-LEARN_CHUNK_TIMESTEPS = 2048
-EVAL_STEPS = 300
 
-def make_train_env(env_id: str):
+TOTAL_TIMESTEPS = 20000
+MAX_EVAL_STEPS = 300
+
+
+def make_train_env(env_id: str, seed: int):
     env = gym.make(env_id)
+    env.reset(seed=seed)
+    env.action_space.seed(seed)
     env = LavaLoggingWrapper(env)
     env = FlatObsWrapper(env)
     return env
@@ -54,7 +60,7 @@ def evaluate_and_record(env_id: str, model_path: str, out_dir: str):
     violations = 0
     success = 0
 
-    for _ in range(EVAL_STEPS):
+    for _ in range(MAX_EVAL_STEPS):
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
         total_reward += float(reward)
@@ -81,6 +87,10 @@ def evaluate_and_record(env_id: str, model_path: str, out_dir: str):
 
     return eval_stats
 
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 def summarize_training(csv_path: str):
     df = pd.read_csv(csv_path)
@@ -109,7 +119,8 @@ def main():
     os.makedirs(BASE_DIR, exist_ok=True)
     os.makedirs(MODELS_DIR, exist_ok=True)
     os.makedirs(VIDEOS_DIR, exist_ok=True)
-
+    seed = 0
+    set_seed(seed)
     summary_rows = []
 
     for env_id in ENV_IDS:
@@ -122,9 +133,8 @@ def main():
 
         print(f"\n=== Training on {env_id} ===")
 
-        env = make_train_env(env_id)
+        env = make_train_env(env_id, seed)
         logger_cb = EpisodeCSVLogger(csv_path)
-
 
         model = PPO(
             policy="MlpPolicy",
@@ -133,14 +143,9 @@ def main():
             device="cpu",
         )
 
-        while logger_cb.rows_written < TARGET_EPISODES:
-            model.learn(
-                total_timesteps=LEARN_CHUNK_TIMESTEPS,
-                callback=logger_cb,
-                reset_num_timesteps=False,
-            )
-
+        model.learn(total_timesteps=TOTAL_TIMESTEPS, callback=logger_cb)
         model.save(model_path)
+
         # Save visit heatmap
         visit_counts = env.env.global_visit_counts  # unwrap FlatObsWrapper -> LavaLoggingWrapper
         np.save(os.path.join(env_out_dir, "visit_counts.npy"), visit_counts)

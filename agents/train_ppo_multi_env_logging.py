@@ -32,7 +32,7 @@ ENV_IDS = [
     "MiniGrid-LavaGapS7-v0",
 ]
 
-SEEDS          = [0, 1] #[0, 1, 2, 3, 4]
+SEEDS          =  [0, 1, 2, 3, 4]
 TOTAL_TIMESTEPS = 100_000
 MAX_EVAL_STEPS  = 300 #300
 N_EVAL_EPISODES = 20 #20

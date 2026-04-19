@@ -9,10 +9,9 @@ import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 from minigrid.wrappers import FlatObsWrapper
 from stable_baselines3 import PPO
-
+from metrics.evaluation import evaluate_model
 from env.lava_logging_wrapper import LavaLoggingWrapper
 from metrics.training_logger import EpisodeCSVLogger
-from metrics.evaluation import evaluate_model
 from metrics.plot_results import (
     plot_training_curves,
     plot_visit_heatmap,
@@ -33,7 +32,7 @@ ENV_IDS = [
 ]
 
 SEEDS          =  [0, 1, 2, 3, 4]
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 300_000
 MAX_EVAL_STEPS  = 300 #300
 N_EVAL_EPISODES = 20 #20
 

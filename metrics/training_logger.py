@@ -3,8 +3,8 @@ import csv
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 
-CONVERGENCE_WINDOW = 10          # rolling window for convergence check
-CONVERGENCE_THRESHOLD = 0.90     # fraction of max reward seen so far
+CONVERGENCE_WINDOW = 20
+CONVERGENCE_REWARD_THRESHOLD = 0.7
 
 
 class EpisodeCSVLogger(BaseCallback):
@@ -15,10 +15,12 @@ class EpisodeCSVLogger(BaseCallback):
         self.rows_written = 0
 
         self._reward_history: list[float] = []
-        self.convergence_episode: int | None = None 
+        self.convergence_episode: int | None = None
         self.convergence_timestep: int | None = None
 
-        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        d = os.path.dirname(csv_path)
+        if d:
+            os.makedirs(d, exist_ok=True)
 
         with open(self.csv_path, "w", newline="") as f:
             writer = csv.writer(f)
@@ -32,14 +34,16 @@ class EpisodeCSVLogger(BaseCallback):
             ])
 
     def _check_convergence(self, episode_idx: int):
-        """Mark convergence the first time the rolling mean >= 90% of best reward."""
+        """Mark convergence the first time the rolling mean reward reaches a fixed threshold."""
         if self.convergence_episode is not None:
-            return 
+            return
+
         if len(self._reward_history) < CONVERGENCE_WINDOW:
             return
+
         rolling_mean = np.mean(self._reward_history[-CONVERGENCE_WINDOW:])
-        best = max(self._reward_history)
-        if best > 0 and rolling_mean >= CONVERGENCE_THRESHOLD * best:
+
+        if rolling_mean >= CONVERGENCE_REWARD_THRESHOLD:
             self.convergence_episode = episode_idx
             self.convergence_timestep = self.num_timesteps
 

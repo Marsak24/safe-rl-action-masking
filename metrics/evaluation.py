@@ -5,15 +5,6 @@ import gymnasium as gym
 from env.lava_logging_wrapper import LavaLoggingWrapper
 
 
-def make_eval_env(env_id, seed):
-    env = gym.make(env_id)
-    env.reset(seed=seed)
-    env.action_space.seed(seed)
-    env = LavaLoggingWrapper(env)
-    env = FlatObsWrapper(env)
-    return env
-
-
 def evaluate_model(model, env_id, seed=0, n_eval_episodes=20):
     rewards = []
     lengths = []

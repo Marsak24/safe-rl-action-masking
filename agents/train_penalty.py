@@ -1,5 +1,5 @@
+import argparse
 import os
-import json
 import random
 
 import numpy as np
@@ -19,13 +19,19 @@ from metrics.plot_results import (
 )
 
 
-BASE_DIR    = "results/penalty_ppo"
-MODELS_DIR  = os.path.join(BASE_DIR, "models")
-VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
-SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
-AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
-LAVA_PENALTY = 0.5
+# BASE_DIR    = "results/penalty_ppo"
+# MODELS_DIR  = os.path.join(BASE_DIR, "models")
+# VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+# SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+# AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+BASE_DIR = None
+MODELS_DIR = None
+VIDEOS_DIR = None
+SUMMARY_CSV = None
+AGG_CSV = None
 
+LAVA_PENALTY = 0.3
+ADJACENT_PENALTY = 0.01
 ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",
     "MiniGrid-LavaGapS6-v0",
@@ -56,8 +62,12 @@ def make_train_env(env_id: str, seed: int):
     env.reset(seed=seed)
     env.action_space.seed(seed)
     env = FlatObsWrapper(env)
-    env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
-
+    env = LavaPenaltyWrapper(
+        env,
+        lava_penalty=LAVA_PENALTY,
+        use_adjacent_penalty=args.use_adjacent_penalty,
+        adjacent_penalty=ADJACENT_PENALTY,
+    )
     return env
 
 
@@ -65,7 +75,13 @@ def make_video_env(env_id: str, video_folder: str, seed: int):
     env = gym.make(env_id, render_mode="rgb_array")
     env.reset(seed=seed)
     env = FlatObsWrapper(env)
-    env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
+    # env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
+    env = LavaPenaltyWrapper(
+        env,
+        lava_penalty=LAVA_PENALTY,
+        use_adjacent_penalty=args.use_adjacent_penalty,
+        adjacent_penalty=ADJACENT_PENALTY,
+    )
     env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: True)
     return env
 
@@ -117,6 +133,20 @@ def set_seed(seed: int):
 
 
 def main():
+    global BASE_DIR, MODELS_DIR, VIDEOS_DIR, SUMMARY_CSV, AGG_CSV
+
+    variant_name = "penalty_adjacent_ppo" if args.use_adjacent_penalty else "penalty_ppo"
+
+    BASE_DIR    = os.path.join("results", variant_name)
+    MODELS_DIR  = os.path.join(BASE_DIR, "models")
+    VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+    SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+    AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+
+    print("Variant:", variant_name)
+    print("Using adjacent penalty:", args.use_adjacent_penalty)
+
+
     for d in (BASE_DIR, MODELS_DIR, VIDEOS_DIR):
         os.makedirs(d, exist_ok=True)
 
@@ -213,4 +243,11 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--use-adjacent-penalty",
+        action="store_true",
+        help="Enable penalty for cells adjacent to lava",
+    )
+    args = parser.parse_args()
     main()

@@ -186,8 +186,10 @@ def make_masked_video_env(
     env = gym.make(env_id, render_mode="rgb_array")
     env.reset(seed=seed)
     env = FlatObsWrapper(env)
-    env = LavaMaskingWrapper(env, mask_risky=mask_risky)
-    env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: True)
-    env = ActionMasker(env, lambda e: e.action_masks())
+    masking_env = LavaMaskingWrapper(env, mask_risky=mask_risky)
+    env = RecordVideo(masking_env, video_folder=video_folder, episode_trigger=lambda x: True)
+    # ActionMasker must be outermost; the lambda reaches through RecordVideo
+    # to the LavaMaskingWrapper which owns action_masks().
+    env = ActionMasker(env, lambda e: masking_env.action_masks())
 
     return env

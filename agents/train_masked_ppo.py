@@ -50,6 +50,7 @@ from gymnasium.wrappers import RecordVideo
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from minigrid.wrappers import FlatObsWrapper
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 from env.lava_masking_wrapper import LavaMaskingWrapper, make_masked_env, make_masked_video_env
 from metrics.masked_training_logger import MaskedEpisodeCSVLogger
@@ -74,10 +75,11 @@ ENV_IDS = [
     "MiniGrid-LavaGapS7-v0",
 ]
 
-SEEDS           = [0, 1, 2, 3, 4]
-TOTAL_TIMESTEPS = 300_000
-MAX_EVAL_STEPS  = 300
-N_EVAL_EPISODES = 20
+SEEDS              = [0, 1, 2, 3, 4]
+TOTAL_TIMESTEPS    = 300_000
+MAX_EVAL_STEPS     = 300
+N_EVAL_EPISODES    = 20
+CHECKPOINT_FREQ    = 50_000   # save a checkpoint every N timesteps
 
 # Identical to vanilla-PPO so comparisons are fair.
 PPO_KWARGS = dict(
@@ -275,8 +277,42 @@ def main() -> None:
             env       = make_train_env(env_id, seed)
             logger_cb = MaskedEpisodeCSVLogger(csv_path)
 
-            model = MaskablePPO(env=env, seed=seed, **PPO_KWARGS)
-            model.learn(total_timesteps=TOTAL_TIMESTEPS, callback=logger_cb)
+            # ------------------------------------------------------------------
+            # Resume from latest checkpoint if one exists, otherwise start fresh
+            # ------------------------------------------------------------------
+            ckpt_dir = os.path.join(env_out_dir, "checkpoints")
+            os.makedirs(ckpt_dir, exist_ok=True)
+
+            existing_ckpts = sorted(
+                [f for f in os.listdir(ckpt_dir) if f.endswith(".zip")],
+                key=lambda f: int(f.split("_steps")[0].split("_")[-1])
+                if "_steps" in f else 0,
+            )
+
+            if existing_ckpts:
+                latest_ckpt = os.path.join(ckpt_dir, existing_ckpts[-1])
+                steps_done  = int(existing_ckpts[-1].split("_steps")[0].split("_")[-1])
+                remaining   = max(0, TOTAL_TIMESTEPS - steps_done)
+                print(f"  Resuming from checkpoint: {latest_ckpt} ({steps_done} steps done, {remaining} remaining)")
+                model = MaskablePPO.load(latest_ckpt, env=env, device=PPO_KWARGS["device"])
+            else:
+                steps_done = 0
+                remaining  = TOTAL_TIMESTEPS
+                model = MaskablePPO(env=env, seed=seed, **PPO_KWARGS)
+
+            if remaining > 0:
+                checkpoint_cb = CheckpointCallback(
+                    save_freq     = CHECKPOINT_FREQ,
+                    save_path     = ckpt_dir,
+                    name_prefix   = f"{env_tag}_seed{seed}_masked_ppo",
+                    verbose       = 0,
+                )
+                model.learn(
+                    total_timesteps   = remaining,
+                    callback          = [logger_cb, checkpoint_cb],
+                    reset_num_timesteps = (steps_done == 0),
+                )
+
             model.save(model_path)
 
             # LavaMaskingWrapper is two wrappers deep (ActionMasker wraps it)

@@ -116,7 +116,7 @@ class LavaMaskingWrapper(LavaLoggingWrapper):
         # -----------------------------------------------------------------
         info = dict(info)
         info["lava_proximity"]         = lava_info
-        info["action_was_unsafe"]      = bool(lava_info["front_is_lava"] and action == 2)
+        info["action_was_unsafe"]      = bool(is_unsafe_action(self, action))
         info["n_adjacent_lava"]        = lava_info["n_adjacent_lava"]
 
         if terminated or truncated:

@@ -18,4 +18,7 @@ results/vanilla_ppo/*
 results/penalty_ppo/*
 !results/penalty_ppo/summary.csv
 !results/penalty_ppo/summary_aggregated.csv
-
+!results/penalty_adjacent_ppo/
+results/penalty_adjacent_ppo/*
+!results/penalty_adjacent_ppo/summary_aggregated.csv
+!results/penalty_adjacent_ppo/summary.csv

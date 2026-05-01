@@ -30,7 +30,7 @@ VIDEOS_DIR = None
 SUMMARY_CSV = None
 AGG_CSV = None
 
-LAVA_PENALTY = 0.3
+LAVA_PENALTY = 0.5
 ADJACENT_PENALTY = 0.01
 ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",

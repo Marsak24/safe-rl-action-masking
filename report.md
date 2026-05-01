@@ -221,12 +221,15 @@ The adjacent penalty variant further highlights the limitations of reward shapin
 | Core masking logic | `src/masking.py` |
 | Hard masking wrapper | `env/lava_masking_wrapper.py` |
 | Soft masking wrapper | `env/lava_soft_masking_wrapper.py` |
+| Penalty wrapper (with adjacent penalty) | `env/lava_penalty_wrapper.py` |
 | Hard masking training | `agents/train_masked_ppo.py` |
 | Soft masking training | `agents/train_soft_masked_ppo.py` |
+| Penalty PPO training | `agents/train_penalty.py` |
 | Mask removal evaluation | `metrics/eval_without_mask.py` |
 | Unit tests (21 tests, all passing) | `tests/test_masking.py` |
 | Vanilla PPO results | `results/vanilla_ppo/` |
 | Penalty PPO results | `results/penalty_ppo/` |
+| Penalty PPO (adjacent) results | `results/penalty_adjacent_01_ppo/` |
 | Hard masked PPO results | `results/masked_ppo/` |
 | Soft masked PPO (0.1) results | `results/soft_masked_ppo/` |
 | Soft masked PPO (0.01) results | `results/soft_masked_ppo_p001/` |

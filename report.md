@@ -14,6 +14,7 @@ This report documents all experiments run to evaluate safe reinforcement learnin
 |---|---|
 | **Vanilla PPO** | Standard PPO with no safety mechanism |
 | **Penalty PPO** | PPO with a −0.5 reward penalty for entering lava |
+| **Penalty PPO (Adjacent)** | PPO with −0.5 lava penalty + small penalty (−0.01) for adjacent-to-lava states |
 | **Hard Masked PPO** | MaskablePPO with forward-into-lava action hard-blocked |
 | **Soft Masked PPO (penalty=0.1)** | Hard block on unsafe actions + −0.1 penalty on risky actions |
 | **Soft Masked PPO (penalty=0.01)** | Hard block on unsafe actions + −0.01 penalty on risky actions |
@@ -78,32 +79,33 @@ All values are means across 5 seeds. Violations are counted during training epis
 
 ### 5.1 Training Violations (mean per episode — lower is better)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.046 | 0.024 | **0.000** | **0.000** | **0.000** |
-| LavaGapS6 | 0.053 | 0.027 | **0.000** | **0.000** | **0.000** |
-| LavaGapS7 | 0.114 | 0.058 | **0.000** | **0.000** | **0.000** |
+| Environment | Vanilla PPO | Penalty PPO | Penalty Adjacent | Hard Masked | Soft (0.1) | Soft (0.01) |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.046 | 0.024 | 0.037 | **0.000** | **0.000** | **0.000** |
+| LavaGapS6 | 0.053 | 0.027 | 0.032 | **0.000** | **0.000** | **0.000** |
+| LavaGapS7 | 0.114 | 0.058 | 0.036 | **0.000** | **0.000** | **0.000** |
 
 > Hard and soft masking both achieve zero training violations due to the hard block on unsafe actions.
+> The adjacent penalty reduces violations compared to vanilla PPO but does not match the zero-violation guarantee of masking-based methods.
 
 ### 5.2 Training Success Rate (mean across all training episodes)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.942 | 0.952 | **0.990** | 0.920 | 0.965 |
-| LavaGapS6 | 0.859 | 0.823 | **0.987** | 0.757 | **0.977** |
-| LavaGapS7 | 0.816 | 0.477 | **0.968** | 0.225 | 0.812 |
+| Environment | Vanilla PPO | Penalty PPO | Penalty Adjacent | Hard Masked | Soft (0.1) | Soft (0.01) |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.942 | 0.952 | **0.956** | **0.990** | 0.920 | 0.965 |
+| LavaGapS6 | 0.859 | 0.823 | 0.779 | **0.987** | 0.757 | **0.977** |
+| LavaGapS7 | 0.816 | 0.477 | 0.577 | **0.968** | 0.225 | 0.812 |
 
 ### 5.3 Convergence Speed (timesteps to reach stable reward — lower is better)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 26,185 | 22,619 | **16,801** | 22,120 | 40,848 |
-| LavaGapS6 | 61,137 | 115,525 | **35,806** | 68,560 | 49,868 |
-| LavaGapS7 | 133,806 | 159,398 | **74,232** | 226,631 | 133,884 |
-
+| Environment | Vanilla PPO | Penalty PPO | Penalty Adjacent | Hard Masked | Soft (0.1) | Soft (0.01) |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 26,185 | 22,619 | 23,033 | **16,801** | 22,120 | 40,848 |
+| LavaGapS6 | 61,137 | 115,525 | 100,648 | **35,806** | 68,560 | 49,868 |
+| LavaGapS7 | 133,806 | 159,398 | 195,197 | **74,232** | 226,631 | 133,884 |
 > Hard masking converges **1.8–3.2× faster** than other methods across all environments.  
 > Penalty PPO is slower than vanilla PPO on harder maps, showing that reward shaping can hurt exploration.
+> The adjacent penalty does not improve convergence and often slows learning, especially in larger environments.
 
 ---
 
@@ -113,19 +115,21 @@ Evaluated over 20 episodes per seed after training. Mask active during evaluatio
 
 ### 6.1 Evaluation Success Rate
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 84.0% | 95.0% | **97.0%** | 79.0% | **100.0%** |
-| LavaGapS6 | 91.0% | 99.0% | 84.0% | 88.0% | 85.0% |
-| LavaGapS7 | 94.0% | 58.0% | **91.0%** | 16.0% | 81.0% |
+| Environment | Vanilla PPO | Penalty PPO | Penalty Adjacent | Hard Masked | Soft (0.1) | Soft (0.01) |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 84.0% | 95.0% | 84.2% | **97.0%** | 79.0% | **100.0%** |
+| LavaGapS6 | 91.0% | 99.0% | 73.9% | 84.0% | 88.0% | 85.0% |
+| LavaGapS7 | 94.0% | 58.0% | 66.5% | **91.0%** | 16.0% | 81.0% |
+
+> Penalty Adjacent underperforms vanilla PPO in S6 and S7, indicating that penalizing proximity to lava harms policy quality in harder environments.
 
 ### 6.2 Evaluation Violations
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
-| LavaGapS6 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
-| LavaGapS7 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
+| Environment | Vanilla PPO | Penalty PPO | Penalty Adjacent | Hard Masked | Soft (0.1) | Soft (0.01) |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.000 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
+| LavaGapS6 | 0.000 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
+| LavaGapS7 | 0.000 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
 
 > All methods achieve zero eval violations because by the end of training, all agents have learned a deterministic policy that avoids lava. However, this does NOT mean all agents have internalized safety — see Section 7.
 
@@ -181,6 +185,7 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 | Hard masking eliminates training violations entirely | 0.000 violations across all envs and seeds |
 | Hard masking converges 1.8–3.2× faster than alternatives | Convergence timestep comparison (Section 5.3) |
 | Penalty PPO fails on larger maps | 58% success on S7 vs 91% for hard masking |
+| Adjacent penalty introduces a safety–exploration conflict | Lower success in S6/S7 despite improved safety signal |
 | Hard-masked agents rely on the mask for safety | Success drop of 29–62% after mask removal |
 | Soft masking (0.1) teaches better intrinsic safety | Only +0.050 violations after mask removal on S6/S7 |
 | Penalty tuning is critical for soft masking | 0.1 vs 0.01 penalty produces drastically different results |
@@ -201,6 +206,9 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 - Some tolerance for weaker task performance is acceptable
 
 **Penalty PPO (Method 2)** is unreliable on harder environments and should not be used as the primary safety mechanism on maps larger than S5.
+
+The adjacent penalty variant further highlights the limitations of reward shaping. While it provides earlier safety feedback, it penalizes states that are often necessary for optimal trajectories, leading to degraded performance in more complex environments.
+
 
 **Vanilla PPO** provides a useful baseline and is surprisingly competitive on S7 compared to penalty PPO, demonstrating that unconstrained exploration sometimes outperforms naive reward shaping.
 

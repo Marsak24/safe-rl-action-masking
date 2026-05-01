@@ -39,14 +39,14 @@ from metrics.plot_results import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BASE_DIR    = "results/soft_masked_ppo"
+BASE_DIR    = "results/soft_masked_ppo_p001"
 MODELS_DIR  = os.path.join(BASE_DIR, "models")
 VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
 SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
 AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
 
 MASK_RISKY    = False   # risky actions are penalised, not blocked
-RISKY_PENALTY = 0.1     # reward deducted per risky action taken
+RISKY_PENALTY = 0.01    # reward deducted per risky action taken (reduced from 0.1)
 
 ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",

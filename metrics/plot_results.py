@@ -27,9 +27,15 @@ def plot_training_curves(csv_path: str, out_dir: str, title_prefix: str):
         ("episode_length",    "Episode Length",    "length_curve.png"),
         ("episode_violations","Violations",        "violations_curve.png"),
         ("episode_success",   "Success",           "success_curve.png"),
+        ("masked_unsafe_attempts", "Masked Unsafe Attempts", "masked_unsafe_curve.png"),
+        ("masked_risky_attempts",  "Masked Risky Attempts",  "masked_risky_curve.png"),
+        ("risky_actions",         "Risky Actions",          "risky_actions_curve.png"),
+        ("risky_penalty_total",   "Risky Penalty Total",    "risky_penalty_curve.png"),
     ]
 
     for col, ylabel, fname in specs:
+        if col not in df.columns:
+            continue
         fig, ax = plt.subplots()
         vals = df[col].values
         ax.plot(vals, alpha=0.4, label="raw")
@@ -72,6 +78,10 @@ def plot_aggregated_curves(
         ("episode_length",    "Episode Length",    "agg_length.png"),
         ("episode_violations","Violations",        "agg_violations.png"),
         ("episode_success",   "Success Rate",      "agg_success.png"),
+        ("masked_unsafe_attempts", "Masked Unsafe Attempts", "agg_masked_unsafe.png"),
+        ("masked_risky_attempts",  "Masked Risky Attempts",  "agg_masked_risky.png"),
+        ("risky_actions",         "Risky Actions",          "agg_risky_actions.png"),
+        ("risky_penalty_total",   "Risky Penalty Total",    "agg_risky_penalty.png"),
     ]
 
     for col, ylabel, fname in specs:
@@ -79,6 +89,8 @@ def plot_aggregated_curves(
         for path in seed_csv_paths:
             df = pd.read_csv(path)
             if len(df) == 0:
+                continue
+            if col not in df.columns:
                 continue
             smoothed_runs.append(moving_average(df[col].values, window=window))
 

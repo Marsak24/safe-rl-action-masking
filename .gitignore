@@ -18,4 +18,8 @@ results/vanilla_ppo/*
 results/penalty_ppo/*
 !results/penalty_ppo/summary.csv
 !results/penalty_ppo/summary_aggregated.csv
-
+!results/hybrid_variant1_ppo/
+results/hybrid_variant1_ppo/*
+!results/hybrid_variant1_ppo/high penalty/
+!results/hybrid_variant1_ppo/high penalty/summary.csv
+!results/hybrid_variant1_ppo/high penalty/summary_aggregated.csv

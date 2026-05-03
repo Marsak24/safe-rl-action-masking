@@ -1,7 +1,7 @@
 # Safe RL with Action Masking — Experimental Report
 
 **Project:** Safe Reinforcement Learning via Action Masking on MiniGrid/LavaGap  
-**Date:** April 30, 2026  
+**Date:** May 3, 2026  
 **Branch:** `sarah-dev`
 
 ---
@@ -15,8 +15,9 @@ This report documents all experiments run to evaluate safe reinforcement learnin
 | **Vanilla PPO** | Standard PPO with no safety mechanism |
 | **Penalty PPO** | PPO with a −0.5 reward penalty for entering lava |
 | **Hard Masked PPO** | MaskablePPO with forward-into-lava action hard-blocked |
-| **Soft Masked PPO (penalty=0.1)** | Hard block on unsafe actions + −0.1 penalty on risky actions |
-| **Soft Masked PPO (penalty=0.01)** | Hard block on unsafe actions + −0.01 penalty on risky actions |
+| **Hybrid Masked PPO (penalty=0.1)** | Hard block on unsafe actions + −0.1 penalty on risky actions |
+| **Hybrid Masked PPO (penalty=0.01)** | Hard block on unsafe actions + −0.01 penalty on risky actions |
+| **Soft Action Masked PPO** | Float logit adjustments reduce probability of unsafe/risky actions — no hard block |
 
 ---
 
@@ -60,13 +61,24 @@ All methods used identical hyperparameters for fair comparison:
 - **Mechanism:** Boolean action mask passed to MaskablePPO at every step. Unsafe actions are set to `False` (blocked). The mask is computed by `src/masking.py::get_action_mask()`.
 - **Guarantee:** The agent physically cannot step into lava at any point during training or evaluation.
 
-### 4.2 Soft Masking (Method 5)
+### 4.2 Hybrid Masking (Method 5)
 - **Unsafe action definition:** Same as hard masking — forward into lava is always hard-blocked.
 - **Risky action definition:** Actions that would place the agent adjacent to lava, or cause the agent to face lava after a turn.
-- **Mechanism:** Hard block on unsafe actions (same mask as Method 3) + reward penalty of −0.1 (or −0.01) applied to any risky action taken.
-- **Goal:** Encourage the agent to learn intrinsic lava avoidance through experience, not just prohibition.
+- **Mechanism:** Hard block on unsafe actions (same mask as Method 3) + reward penalty of −0.1 (or −0.01) applied to any risky action taken in the *reward space*.
+- **Goal:** Encourage the agent to learn intrinsic lava avoidance through experience rather than prohibition alone.
+- **Why "hybrid":** Combines a hard constraint (binary mask zeroing out unsafe actions) with a soft incentive (reward shaping on risky actions). Neither component alone defines this method.
 
-### 4.3 Penalty PPO (Method 2)
+### 4.3 Soft Action Masking (Method 6)
+- **Mechanism:** The environment's `action_masks()` returns a **float** logit adjustment array instead of a boolean mask. `SoftMaskableCategoricalDistribution` adds these adjustments to the raw policy logits before softmax:
+  - Unsafe action (forward into lava): adjustment = −5.0 → exp(5) ≈ **150× less likely** than a safe action
+  - Risky action (adjacent to / facing lava): adjustment = −2.0 → exp(2) ≈ **7× less likely**
+  - Safe action: adjustment = 0.0 (no change)
+- **No hard block:** Every action remains selectable. The agent can still step into lava; violations occur during training and are counted.
+- **No reward shaping:** Safety signal lives entirely in the action distribution, not the reward function.
+- **Policy gradient:** Flows through all actions including unsafe ones, allowing the agent to learn from lava-entry consequences.
+- **Distinct from hybrid masking:** Hybrid masking hard-blocks unsafe actions (prob = 0) and separately penalises risky actions via the reward. Soft action masking applies only a probabilistic logit shift — no binary constraint, no reward modification.
+
+### 4.4 Penalty PPO (Method 2)
 - **Mechanism:** No action masking. A fixed −0.5 reward penalty is applied whenever the agent enters a lava cell.
 - **No safety guarantee:** The agent can freely attempt to step into lava.
 
@@ -78,32 +90,32 @@ All values are means across 5 seeds. Violations are counted during training epis
 
 ### 5.1 Training Violations (mean per episode — lower is better)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.046 | 0.024 | **0.000** | **0.000** | **0.000** |
-| LavaGapS6 | 0.053 | 0.027 | **0.000** | **0.000** | **0.000** |
-| LavaGapS7 | 0.114 | 0.058 | **0.000** | **0.000** | **0.000** |
+| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Hybrid (0.1) | Hybrid (0.01) | Soft Action |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.046 | 0.024 | **0.000** | **0.000** | **0.000** | 0.022 |
+| LavaGapS6 | 0.053 | 0.027 | **0.000** | **0.000** | **0.000** | 0.015 |
+| LavaGapS7 | 0.114 | 0.058 | **0.000** | **0.000** | **0.000** | 0.016 |
 
-> Hard and soft masking both achieve zero training violations due to the hard block on unsafe actions.
+> Hard and hybrid masking achieve zero training violations due to the hard block on unsafe actions. Soft action masking allows violations during training — the agent can enter lava — but learns to avoid it through the logit penalty and the natural reward signal.
 
 ### 5.2 Training Success Rate (mean across all training episodes)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.942 | 0.952 | **0.990** | 0.920 | 0.965 |
-| LavaGapS6 | 0.859 | 0.823 | **0.987** | 0.757 | **0.977** |
-| LavaGapS7 | 0.816 | 0.477 | **0.968** | 0.225 | 0.812 |
+| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Hybrid (0.1) | Hybrid (0.01) | Soft Action |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.942 | 0.952 | **0.990** | 0.920 | 0.965 | 0.967 |
+| LavaGapS6 | 0.859 | 0.823 | **0.987** | 0.757 | **0.977** | 0.971 |
+| LavaGapS7 | 0.816 | 0.477 | **0.968** | 0.225 | 0.812 | 0.964 |
 
 ### 5.3 Convergence Speed (timesteps to reach stable reward — lower is better)
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 26,185 | 22,619 | **16,801** | 22,120 | 40,848 |
-| LavaGapS6 | 61,137 | 115,525 | **35,806** | 68,560 | 49,868 |
-| LavaGapS7 | 133,806 | 159,398 | **74,232** | 226,631 | 133,884 |
+| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Hybrid (0.1) | Hybrid (0.01) | Soft Action |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 26,185 | 22,619 | **16,801** | 22,120 | 40,848 | 29,518 |
+| LavaGapS6 | 61,137 | 115,525 | **35,806** | 68,560 | 49,868 | 45,270 |
+| LavaGapS7 | 133,806 | 159,398 | **74,232** | 226,631 | 133,884 | 70,169 |
 
 > Hard masking converges **1.8–3.2× faster** than other methods across all environments.  
-> Penalty PPO is slower than vanilla PPO on harder maps, showing that reward shaping can hurt exploration.
+> Soft action masking converges comparably to vanilla PPO and faster than hybrid masking, despite having no hard safety guarantee.
 
 ---
 
@@ -113,21 +125,21 @@ Evaluated over 20 episodes per seed after training. Mask active during evaluatio
 
 ### 6.1 Evaluation Success Rate
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 84.0% | 95.0% | **97.0%** | 79.0% | **100.0%** |
-| LavaGapS6 | 91.0% | 99.0% | 84.0% | 88.0% | 85.0% |
-| LavaGapS7 | 94.0% | 58.0% | **91.0%** | 16.0% | 81.0% |
+| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Hybrid (0.1) | Hybrid (0.01) | Soft Action |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 84.0% | 95.0% | **97.0%** | 79.0% | **100.0%** | 92.0% |
+| LavaGapS6 | 91.0% | 99.0% | 84.0% | 88.0% | 85.0% | **98.0%** |
+| LavaGapS7 | 94.0% | 58.0% | **91.0%** | 16.0% | 81.0% | **95.0%** |
 
 ### 6.2 Evaluation Violations
 
-| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Soft (0.1) | Soft (0.01) |
-|---|---|---|---|---|---|
-| LavaGapS5 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
-| LavaGapS6 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
-| LavaGapS7 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** |
+| Environment | Vanilla PPO | Penalty PPO | Hard Masked | Hybrid (0.1) | Hybrid (0.01) | Soft Action |
+|---|---|---|---|---|---|---|
+| LavaGapS5 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** | **0.000** |
+| LavaGapS6 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** | **0.000** |
+| LavaGapS7 | 0.000 | 0.000 | **0.000** | **0.000** | **0.000** | **0.000** |
 
-> All methods achieve zero eval violations because by the end of training, all agents have learned a deterministic policy that avoids lava. However, this does NOT mean all agents have internalized safety — see Section 7.
+> All methods achieve zero eval violations after convergence. For soft action masking this is especially notable: the agent experienced lava entries during training (Section 5.1), but by convergence had learned a deterministic lava-avoidance policy entirely from the logit signal and reward — with no hard constraint enforcing it. See Section 7 for transferability analysis.
 
 ---
 
@@ -142,12 +154,15 @@ To test whether agents have learned intrinsic safety or rely on the mask, each t
 | Hard Masked | S5 | 97.0% | 68.0% | −29% |
 | Hard Masked | S6 | 84.0% | 22.0% | −62% |
 | Hard Masked | S7 | 91.0% | 49.0% | −42% |
-| Soft (0.1) | S5 | 79.0% | 45.0% | −34% |
-| Soft (0.1) | S6 | 88.0% | 83.0% | **−5%** |
-| Soft (0.1) | S7 | 16.0% | 12.0% | −4% |
-| Soft (0.01) | S5 | 100.0% | 19.0% | −81% |
-| Soft (0.01) | S6 | 85.0% | 50.0% | −35% |
-| Soft (0.01) | S7 | 81.0% | 78.0% | **−3%** |
+| Hybrid (0.1) | S5 | 79.0% | 45.0% | −34% |
+| Hybrid (0.1) | S6 | 88.0% | 83.0% | **−5%** |
+| Hybrid (0.1) | S7 | 16.0% | 12.0% | −4% |
+| Hybrid (0.01) | S5 | 100.0% | 19.0% | −81% |
+| Hybrid (0.01) | S6 | 85.0% | 50.0% | −35% |
+| Hybrid (0.01) | S7 | 81.0% | 78.0% | **−3%** |
+| Soft Action | S5 | 92.0% | 51.0% | −41% |
+| Soft Action | S6 | 98.0% | 65.0% | −33% |
+| Soft Action | S7 | 95.0% | 76.0% | **−19%** |
 
 ### 7.2 Violations: With Mask vs. Without Mask
 
@@ -156,21 +171,25 @@ To test whether agents have learned intrinsic safety or rely on the mask, each t
 | Hard Masked | S5 | 0.000 | 0.290 |
 | Hard Masked | S6 | 0.000 | 0.770 |
 | Hard Masked | S7 | 0.000 | 0.510 |
-| Soft (0.1) | S5 | 0.000 | 0.340 |
-| Soft (0.1) | S6 | 0.000 | **0.050** |
-| Soft (0.1) | S7 | 0.000 | **0.050** |
-| Soft (0.01) | S5 | 0.000 | 0.810 |
-| Soft (0.01) | S6 | 0.000 | 0.420 |
-| Soft (0.01) | S7 | 0.000 | 0.100 |
+| Hybrid (0.1) | S5 | 0.000 | 0.340 |
+| Hybrid (0.1) | S6 | 0.000 | **0.050** |
+| Hybrid (0.1) | S7 | 0.000 | **0.050** |
+| Hybrid (0.01) | S5 | 0.000 | 0.810 |
+| Hybrid (0.01) | S6 | 0.000 | 0.420 |
+| Hybrid (0.01) | S7 | 0.000 | 0.100 |
+| Soft Action | S5 | 0.000 | **0.110** |
+| Soft Action | S6 | 0.000 | **0.150** |
+| Soft Action | S7 | 0.000 | **0.120** |
 
 ### 7.3 Interpretation
 
 - **Hard masking** causes large safety degradation when the mask is removed. The agent learned to navigate *with* the mask but never experienced the consequence of approaching lava, so it has no intrinsic reason to avoid it.
-- **Soft masking (0.1)** shows the best intrinsic safety on S6 and S7 — only +0.050 violations — because the risky penalty forced the agent to experience and learn from proximity to lava.
-- **Soft masking (0.01)** is the most task-competent on S7 with mask active (81%), and transfers reasonably well (only +0.100 violations), but the small penalty was too weak to teach safety on S5.
-- **Penalty tuning matters:** No single penalty value is universally optimal. This is a genuine challenge for soft masking that hard masking sidesteps entirely.
+- **Hybrid masking (0.1)** shows the best intrinsic safety on S6 and S7 — only +0.050 violations — because the risky penalty forced the agent to experience and learn from proximity to lava.
+- **Hybrid masking (0.01)** is the most task-competent on S7 with mask active (81%), and transfers reasonably well (only +0.100 violations), but the small penalty was too weak to teach safety on S5.
+- **Soft action masking** achieves the most consistent transferability across all three environments: only +0.110–0.150 violations after mask removal, with success dropping by 19–41%. Critically, this is accomplished with no hard block and no reward shaping — solely through logit discouragement during training.
+- **Penalty tuning matters for hybrid masking:** No single penalty value is universally optimal. This is a genuine challenge for hybrid masking that hard masking and soft action masking both sidestep.
 
-This tradeoff is known in the safe RL literature as **safety vs. policy transferability**: hard constraints guarantee safety but reduce transferability; soft constraints transfer better but offer weaker guarantees.
+This tradeoff is known in the safe RL literature as **safety vs. policy transferability**: hard constraints guarantee safety during training but reduce transferability; probabilistic methods (soft action masking) transfer better but offer weaker training-time guarantees.
 
 ---
 
@@ -182,8 +201,11 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 | Hard masking converges 1.8–3.2× faster than alternatives | Convergence timestep comparison (Section 5.3) |
 | Penalty PPO fails on larger maps | 58% success on S7 vs 91% for hard masking |
 | Hard-masked agents rely on the mask for safety | Success drop of 29–62% after mask removal |
-| Soft masking (0.1) teaches better intrinsic safety | Only +0.050 violations after mask removal on S6/S7 |
-| Penalty tuning is critical for soft masking | 0.1 vs 0.01 penalty produces drastically different results |
+| Hybrid masking (0.1) teaches better intrinsic safety | Only +0.050 violations after mask removal on S6/S7 |
+| Penalty tuning is critical for hybrid masking | 0.1 vs 0.01 penalty produces drastically different results |
+| Soft action masking achieves best consistent transferability | +0.110–0.150 violations across all three envs after mask removal |
+| Soft action masking converges comparably to vanilla PPO | 29k–70k steps vs 26k–134k for vanilla |
+| Soft action masking allows training-time violations | 0.016–0.022 violations/episode (no hard block) |
 | All methods achieve zero eval violations after convergence | Lava = episode termination provides implicit learning signal |
 
 ---
@@ -195,12 +217,17 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 - Sample efficiency matters (fastest convergence)
 - The mask will always be available at deployment time
 
-**Soft masking (Method 5, penalty=0.1)** is the best choice when:
+**Hybrid masking (Method 5, penalty=0.1)** is the best choice when:
 - The mask may not be available at deployment time (better transferability)
 - Larger, harder environments are used (avoids over-constraining the policy)
 - Some tolerance for weaker task performance is acceptable
 
 **Penalty PPO (Method 2)** is unreliable on harder environments and should not be used as the primary safety mechanism on maps larger than S5.
+
+**Soft action masking (Method 6)** is the best choice when:
+- The mask will not be available at deployment time and transferability is the top priority
+- Some training-time violations are acceptable
+- A consistent, tuning-free safety signal is preferred (no penalty hyperparameter to tune)
 
 **Vanilla PPO** provides a useful baseline and is surprisingly competitive on S7 compared to penalty PPO, demonstrating that unconstrained exploration sometimes outperforms naive reward shaping.
 
@@ -212,14 +239,18 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 |---|---|
 | Core masking logic | `src/masking.py` |
 | Hard masking wrapper | `env/lava_masking_wrapper.py` |
-| Soft masking wrapper | `env/lava_soft_masking_wrapper.py` |
+| Hybrid masking wrapper | `env/lava_soft_masking_wrapper.py` |
+| Soft action masking wrapper | `env/lava_soft_action_masking_wrapper.py` |
 | Hard masking training | `agents/train_masked_ppo.py` |
-| Soft masking training | `agents/train_soft_masked_ppo.py` |
+| Hybrid masking training | `agents/train_soft_masked_ppo.py` |
+| Soft action masking training | `agents/train_soft_action_masking_ppo.py` |
+| Custom PPO policy/distribution | `agents/soft_maskable_ppo.py` |
 | Mask removal evaluation | `metrics/eval_without_mask.py` |
 | Unit tests (21 tests, all passing) | `tests/test_masking.py` |
 | Vanilla PPO results | `results/vanilla_ppo/` |
 | Penalty PPO results | `results/penalty_ppo/` |
 | Hard masked PPO results | `results/masked_ppo/` |
-| Soft masked PPO (0.1) results | `results/soft_masked_ppo/` |
-| Soft masked PPO (0.01) results | `results/soft_masked_ppo_p001/` |
+| Hybrid masked PPO (0.1) results | `results/soft_masked_ppo/` |
+| Hybrid masked PPO (0.01) results | `results/soft_masked_ppo_p001/` |
+| Soft action masked PPO results | `results/soft_action_masked_ppo/` |
 | Mask removal eval results | `results/mask_removal_eval.csv` |

@@ -27,21 +27,37 @@ from minigrid.wrappers import FlatObsWrapper
 from sb3_contrib import MaskablePPO
 
 from env.lava_masking_wrapper import LavaMaskingWrapper, make_masked_env
+from env.lava_soft_action_masking_wrapper import make_soft_action_masked_env
 from env.lava_logging_wrapper import LavaLoggingWrapper
+from agents.soft_maskable_ppo import (
+    SoftMaskableActorCriticPolicy,
+    SoftMaskableCategoricalDistribution,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration — point to whichever result dirs you want to evaluate
 # ---------------------------------------------------------------------------
+# "wrapper" key controls which env is used for the WITH-mask evaluation pass:
+#   "hard"  → make_masked_env  (binary mask, LavaMaskingWrapper)
+#   "soft"  → make_soft_action_masked_env  (float logit adjustments)
 EVAL_CONFIGS = [
     {
         "label":      "Hard Masked PPO",
         "models_dir": "results/masked_ppo/models",
         "suffix":     "masked_ppo",
+        "wrapper":    "hard",
     },
     {
         "label":      "Soft Masked PPO (penalty=0.01)",
         "models_dir": "results/soft_masked_ppo_p001/models",
         "suffix":     "soft_masked_ppo",
+        "wrapper":    "hard",  # hybrid masking still uses binary mask wrapper
+    },
+    {
+        "label":      "Soft Action Masked PPO",
+        "models_dir": "results/soft_action_masked_ppo/models",
+        "suffix":     "soft_action_masked_ppo",
+        "wrapper":    "soft",  # float logit adjustments via SoftMaskableActorCriticPolicy
     },
 ]
 
@@ -61,9 +77,14 @@ OUTPUT_CSV      = "results/mask_removal_eval.csv"
 # Evaluation helpers
 # ---------------------------------------------------------------------------
 
-def _eval_with_mask(model: MaskablePPO, env_id: str, seed: int) -> dict:
+def _eval_with_mask(
+    model: MaskablePPO, env_id: str, seed: int, wrapper: str = "hard"
+) -> dict:
     """Evaluate with the action mask active (normal deployment)."""
-    env = make_masked_env(env_id, seed=seed)
+    if wrapper == "soft":
+        env = make_soft_action_masked_env(env_id, seed=seed)
+    else:
+        env = make_masked_env(env_id, seed=seed)
     rewards, violations, successes = [], [], []
 
     for ep in range(N_EVAL_EPISODES):
@@ -159,8 +180,17 @@ def main() -> None:
                 print(f"  Evaluating {label} | {env_id} | seed={seed} ...")
                 model = MaskablePPO.load(model_path, device="cpu")
 
+                # Restore float-logit distribution if this is a soft action masking model
+                if cfg.get("wrapper") == "soft":
+                    if not isinstance(
+                        model.policy.action_dist, SoftMaskableCategoricalDistribution
+                    ):
+                        model.policy.action_dist = SoftMaskableCategoricalDistribution(
+                            int(model.policy.action_space.n)
+                        )
+
                 with_mask_results.append(
-                    _eval_with_mask(model, env_id, seed)
+                    _eval_with_mask(model, env_id, seed, wrapper=cfg.get("wrapper", "hard"))
                 )
                 without_mask_results.append(
                     _eval_without_mask(model, env_id, seed)

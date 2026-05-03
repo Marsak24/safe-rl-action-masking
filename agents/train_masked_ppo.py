@@ -35,8 +35,8 @@ results/masked_ppo/
     summary.csv
     summary_aggregated.csv
 """
-
 from __future__ import annotations
+import argparse
 
 import os
 import json
@@ -62,13 +62,25 @@ from metrics.plot_results import (
 # ---------------------------------------------------------------------------
 # Configuration (keep in sync with other method scripts)
 # ---------------------------------------------------------------------------
-BASE_DIR    = "results/masked_ppo"
-MODELS_DIR  = os.path.join(BASE_DIR, "models")
-VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
-SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
-AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+# BASE_DIR    = "results/masked_ppo"
+# MODELS_DIR  = os.path.join(BASE_DIR, "models")
+# VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+# SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+# AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
 
-ENV_IDS = [
+BASE_DIR = None
+MODELS_DIR = None
+VIDEOS_DIR = None
+SUMMARY_CSV = None
+AGG_CSV = None
+
+# ENV_IDS = [
+#     "MiniGrid-LavaGapS5-v0",
+#     "MiniGrid-LavaGapS6-v0",
+#     "MiniGrid-LavaGapS7-v0",
+# ]
+
+DEFAULT_ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",
     "MiniGrid-LavaGapS6-v0",
     "MiniGrid-LavaGapS7-v0",
@@ -245,8 +257,21 @@ def set_seed(seed: int) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def main(args) -> None:
+    global BASE_DIR, MODELS_DIR, VIDEOS_DIR, SUMMARY_CSV, AGG_CSV
 
-def main() -> None:
+    env_ids = args.env if args.env is not None else DEFAULT_ENV_IDS
+
+    variant_name = "masked_ppo"
+    if args.result_suffix:
+        variant_name = f"{variant_name}_{args.result_suffix}"
+
+    BASE_DIR    = os.path.join("results", variant_name)
+    MODELS_DIR  = os.path.join(BASE_DIR, "models")
+    VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+    SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+    AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+
     for d in (BASE_DIR, MODELS_DIR, VIDEOS_DIR):
         os.makedirs(d, exist_ok=True)
 
@@ -254,13 +279,13 @@ def main() -> None:
 
     seed_csv_paths: dict[str, list[str]] = {
         env_id.replace("MiniGrid-", "").replace("-v0", "").lower(): []
-        for env_id in ENV_IDS
+        for env_id in env_ids
     }
 
     for seed in SEEDS:
         set_seed(seed)
 
-        for env_id in ENV_IDS:
+        for env_id in env_ids:
             env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
 
             env_out_dir = os.path.join(BASE_DIR, env_tag, f"seed_{seed}")
@@ -332,7 +357,7 @@ def main() -> None:
     )
     agg_df.to_csv(AGG_CSV)
 
-    for env_id in ENV_IDS:
+    for env_id in env_ids:
         env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
         plot_aggregated_curves(
             seed_csv_paths=seed_csv_paths[env_tag],
@@ -345,6 +370,9 @@ def main() -> None:
     print(f"Aggregated summary: {AGG_CSV}")
     print(agg_df)
 
-
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", nargs="+", default=None)
+    parser.add_argument("--result-suffix", type=str, default="")
+    args = parser.parse_args()
+    main(args)

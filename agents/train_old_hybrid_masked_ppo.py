@@ -1,19 +1,19 @@
 """
-agents/train_soft_masked_ppo.py
+agents/train_old_hybrid_masked_ppo.py
 ================================
-Method 5 / Soft masking: MaskablePPO where:
+Method 5 / old_hybrid masking: MaskablePPO where:
   - UNSAFE actions (forward into lava) are HARD-BLOCKED via the action mask.
   - RISKY actions (adjacent to lava) are ALLOWED but receive a reward penalty.
 
 This is distinct from hybrid masking (Method 4) which hard-blocks risky actions.
-Soft masking lets the agent learn to avoid risky positions through experience
+old_hybrid masking lets the agent learn to avoid risky positions through experience
 rather than prohibition, while still guaranteeing zero lava entries.
 
-Results saved to results/soft_masked_ppo/.
+Results saved to results/old_hybrid_masked_ppo/.
 
 Run
 ---
-    python -m agents.train_soft_masked_ppo
+    python -m agents.train_old_hybrid_masked_ppo
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import gymnasium as gym
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 
-from env.lava_soft_masking_wrapper import make_soft_masked_env, make_soft_masked_video_env
+from env.lava_old_hybrid_masking_wrapper import make_old_hybrid_masked_env, make_old_hybrid_masked_video_env
 from metrics.masked_training_logger import MaskedEpisodeCSVLogger
 from metrics.plot_results import (
     plot_training_curves,
@@ -39,7 +39,7 @@ from metrics.plot_results import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BASE_DIR    = "results/soft_masked_ppo_p001"
+BASE_DIR    = "results/old_hybrid_masked_ppo_p001"
 MODELS_DIR  = os.path.join(BASE_DIR, "models")
 VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
 SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
@@ -86,7 +86,7 @@ def evaluate_masked_model(
 ) -> dict:
     rewards, lengths, violations, successes, masked_unsafe_list = [], [], [], [], []
 
-    env = make_soft_masked_env(env_id, seed=seed, risky_penalty=RISKY_PENALTY)
+    env = make_old_hybrid_masked_env(env_id, seed=seed, risky_penalty=RISKY_PENALTY)
 
     for ep in range(n_eval_episodes):
         obs, _ = env.reset(seed=seed + ep)
@@ -116,7 +116,7 @@ def evaluate_masked_model(
 
 def record_video(env_id: str, model_path: str, out_dir: str, seed: int) -> None:
     os.makedirs(out_dir, exist_ok=True)
-    env   = make_soft_masked_video_env(env_id, out_dir, seed=seed, risky_penalty=RISKY_PENALTY)
+    env   = make_old_hybrid_masked_video_env(env_id, out_dir, seed=seed, risky_penalty=RISKY_PENALTY)
     model = MaskablePPO.load(model_path, device="cpu")
     obs, _ = env.reset()
     for _ in range(MAX_EVAL_STEPS):
@@ -179,12 +179,12 @@ def main() -> None:
             os.makedirs(env_out_dir, exist_ok=True)
 
             csv_path   = os.path.join(env_out_dir, "training_log.csv")
-            model_path = os.path.join(MODELS_DIR, f"{env_tag}_seed{seed}_soft_masked_ppo.zip")
+            model_path = os.path.join(MODELS_DIR, f"{env_tag}_seed{seed}_old_hybrid_masked_ppo.zip")
             seed_csv_paths[env_tag].append(csv_path)
 
-            print(f"\n=== Training (Soft Masked PPO) | {env_id} | seed={seed} ===")
+            print(f"\n=== Training (old_hybrid Masked PPO) | {env_id} | seed={seed} ===")
 
-            env       = make_soft_masked_env(env_id, seed=seed, risky_penalty=RISKY_PENALTY)
+            env       = make_old_hybrid_masked_env(env_id, seed=seed, risky_penalty=RISKY_PENALTY)
             logger_cb = MaskedEpisodeCSVLogger(csv_path)
 
             # Resume from checkpoint if available
@@ -210,7 +210,7 @@ def main() -> None:
                 checkpoint_cb = CheckpointCallback(
                     save_freq   = CHECKPOINT_FREQ,
                     save_path   = ckpt_dir,
-                    name_prefix = f"{env_tag}_seed{seed}_soft_masked_ppo",                    verbose     = 0,
+                    name_prefix = f"{env_tag}_seed{seed}_old_hybrid_masked_ppo",                    verbose     = 0,
                 )
                 model.learn(
                     total_timesteps     = remaining,
@@ -220,20 +220,20 @@ def main() -> None:
 
             model.save(model_path)
 
-            masking_wrapper = env.env  # ActionMasker → LavaSoftMaskingWrapper
+            masking_wrapper = env.env  # ActionMasker → Lavaold_hybridMaskingWrapper
             visit_counts    = masking_wrapper.visit_counts
             np.save(os.path.join(env_out_dir, "visit_counts.npy"), visit_counts)
             plot_visit_heatmap(
                 visit_counts,
                 os.path.join(env_out_dir, "visit_heatmap.png"),
-                title=f"{env_id} seed={seed} - Soft Masked PPO Visitation",
+                title=f"{env_id} seed={seed} - old_hybrid Masked PPO Visitation",
             )
             env.close()
 
             plot_training_curves(
                 csv_path=csv_path,
                 out_dir=env_out_dir,
-                title_prefix=f"{env_id} seed={seed} (Soft Masked PPO)",
+                title_prefix=f"{env_id} seed={seed} (old_hybrid Masked PPO)",
             )
 
             model_loaded = MaskablePPO.load(model_path, device="cpu")
@@ -275,7 +275,7 @@ def main() -> None:
         plot_aggregated_curves(
             seed_csv_paths=seed_csv_paths[env_tag],
             out_dir=os.path.join(BASE_DIR, env_tag, "aggregated"),
-            title_prefix=f"{env_id} (Soft Masked PPO)",
+            title_prefix=f"{env_id} (old_hybrid Masked PPO)",
         )
 
     print("\nDone.")

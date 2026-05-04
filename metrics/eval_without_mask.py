@@ -39,9 +39,9 @@ EVAL_CONFIGS = [
         "suffix":     "masked_ppo",
     },
     {
-        "label":      "Soft Masked PPO (penalty=0.01)",
-        "models_dir": "results/soft_masked_ppo_p001/models",
-        "suffix":     "soft_masked_ppo",
+        "label":      "old_hybrid Masked PPO (penalty=0.01)",
+        "models_dir": "results/old_hybrid_masked_ppo_p001/models",
+        "suffix":     "old_hybrid_masked_ppo",
     },
 ]
 

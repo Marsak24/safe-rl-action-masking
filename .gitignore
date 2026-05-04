@@ -9,13 +9,22 @@ videos/
 *.png
 *.jpg
 *.pdf
-results/*
-!results/vanilla_ppo/
-results/vanilla_ppo/*
-!results/vanilla_ppo/summary.csv
-!results/vanilla_ppo/summary_aggregated.csv
-!results/penalty_ppo/
-results/penalty_ppo/*
-!results/penalty_ppo/summary.csv
-!results/penalty_ppo/summary_aggregated.csv
+# results/*
+# !results/**/*.csv
+# !results/vanilla_ppo/
+# results/vanilla_ppo/*
+# !results/vanilla_ppo/
+# !results/penalty_ppo/
 
+# results/*
+# !results/**/
+# !results/**/summary*.csv
+
+# Ignore everything in results
+results/**
+
+# Re-include directories (required)
+!results/**/
+
+# Re-include only summary CSVs
+!results/**/summary*.csv

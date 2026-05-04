@@ -233,7 +233,60 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 
 ---
 
-## 10. Files and Artifacts
+## 10. LavaCrossing Generalisation Experiments
+
+To test whether hard masking scales to structurally harder environments, **Hard Masked PPO** was also evaluated on three MiniGrid LavaCrossing layouts. LavaCrossing requires the agent to cross horizontal lava rivers through narrow gaps — the optimal path always passes adjacent to lava, making it a more demanding navigation challenge than LavaGap.
+
+### 10.1 Environments
+
+| Environment | Grid Size | Lava Rivers | Description |
+|---|---|---|---|
+| `MiniGrid-LavaCrossingS9N1-v0` | 9×9 | 1 | Single river to cross |
+| `MiniGrid-LavaCrossingS9N3-v0` | 9×9 | 3 | Three rivers, much harder |
+| `MiniGrid-LavaCrossingS11N5-v0` | 11×11 | 5 | Five rivers, largest layout |
+
+Shared config: 1,000,000 timesteps, 5 seeds, same PPO hyperparameters as LavaGap experiments.
+
+### 10.2 Training Results (mean across 5 seeds)
+
+| Environment | Mean Success Rate | Mean Reward | Eval Success Rate | Eval Violations | Seeds Converged |
+|---|---|---|---|---|---|
+| LavaCrossingS9N1 | 56.7% | 0.482 | 54.0% | 0.000 | 4 / 5 |
+| LavaCrossingS9N3 | 20.4% | 0.128 | 2.0% | 0.000 | 0 / 5 |
+| LavaCrossingS11N5 | 10.3% | 0.058 | 0.0% | 0.000 | 0 / 5 |
+
+> Zero training violations across all seeds and environments — the hard mask remains fully effective regardless of environment complexity. However, task performance degrades sharply as the number of lava rivers increases, suggesting the agent struggles to discover valid crossing paths within the training budget.
+
+### 10.3 Convergence (S9N1 seeds that converged)
+
+| Seed | Convergence Timestep | Eval Success |
+|---|---|---|
+| 0 | 115,233 | 95.0% |
+| 2 | 210,365 | 45.0% |
+| 3 | 261,580 | 45.0% |
+| 4 | 112,356 | 85.0% |
+
+Seeds 0 and 4 on S9N1 achieved strong performance (85–95% eval success), comparable to LavaGap results with ~3× more timesteps. Seeds 1 on S9N1 and all seeds on S9N3/S11N5 did not converge within 1M steps.
+
+### 10.4 Mask Removal Evaluation (LavaCrossing)
+
+| Environment | WITH mask | WITHOUT mask | Violations (no mask) |
+|---|---|---|---|
+| LavaCrossingS9N1 | 83.0% | 56.0% | 0.310 |
+| LavaCrossingS9N3 | 24.0% | 8.0% | 0.700 |
+| LavaCrossingS11N5 | 3.0% | 2.0% | 0.560 |
+
+The mask-removal pattern matches the LavaGap findings: hard-masked agents rely heavily on the mask for safety. Violations jump to 0.31–0.70 after mask removal, consistent with the LavaGap results (0.29–0.77). This confirms that the transferability limitation of hard masking is not environment-specific — it is a structural property of the method.
+
+### 10.5 Takeaways
+
+- Hard masking **scales safely** to harder environments — zero violations are preserved regardless of layout complexity.
+- Task performance is **budget-sensitive**: S9N1 converges given enough timesteps (1M), but S9N3 and S11N5 likely require 3–5M steps or curriculum learning.
+- The **mask-reliance problem generalises**: crossing agents show the same transferability gap as gap agents, reinforcing the core finding of Section 7.
+
+---
+
+## 11. Files and Artifacts
 
 | Artifact | Location |
 |---|---|
@@ -244,8 +297,10 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 | Hard masking training | `agents/train_masked_ppo.py` |
 | Hybrid masking training | `agents/train_soft_masked_ppo.py` |
 | Soft action masking training | `agents/train_soft_action_masking_ppo.py` |
+| Hard masking crossing training | `agents/train_masked_ppo_crossing.py` |
 | Custom PPO policy/distribution | `agents/soft_maskable_ppo.py` |
-| Mask removal evaluation | `metrics/eval_without_mask.py` |
+| Mask removal evaluation (LavaGap) | `metrics/eval_without_mask.py` |
+| Mask removal evaluation (LavaCrossing) | `metrics/eval_without_mask_crossing.py` |
 | Unit tests (21 tests, all passing) | `tests/test_masking.py` |
 | Vanilla PPO results | `results/vanilla_ppo/` |
 | Penalty PPO results | `results/penalty_ppo/` |
@@ -253,4 +308,6 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 | Hybrid masked PPO (0.1) results | `results/soft_masked_ppo/` |
 | Hybrid masked PPO (0.01) results | `results/soft_masked_ppo_p001/` |
 | Soft action masked PPO results | `results/soft_action_masked_ppo/` |
-| Mask removal eval results | `results/mask_removal_eval.csv` |
+| Hard masked PPO crossing results | `results/masked_ppo_crossing/` |
+| Mask removal eval results (LavaGap) | `results/mask_removal_eval.csv` |
+| Mask removal eval results (LavaCrossing) | `results/mask_removal_eval_crossing.csv` |

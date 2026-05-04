@@ -23,3 +23,10 @@ results/hybrid_variant1_ppo/*
 !results/hybrid_variant1_ppo/high penalty/
 !results/hybrid_variant1_ppo/high penalty/summary.csv
 !results/hybrid_variant1_ppo/high penalty/summary_aggregated.csv
+!results/hybrid_variant1_ppo/low penalty/
+!results/hybrid_variant1_ppo/low penalty/summary.csv
+!results/hybrid_variant1_ppo/low penalty/summary_aggregated.csv
+!results/hybrid_adaptive_ppo/
+results/hybrid_adaptive_ppo/*
+!results/hybrid_adaptive_ppo/summary.csv
+!results/hybrid_adaptive_ppo/summary_aggregated.csv

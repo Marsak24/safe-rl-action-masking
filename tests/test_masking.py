@@ -288,8 +288,8 @@ class TestGetActionMask:
                             or getattr(front_cell, "type", None) != "lava"
                         ):
                             _place_agent(env, (x, y), cur_dir)
-                            mask_soft = get_action_mask(env, mask_risky=True)
-                            assert not mask_soft[ACTION_LEFT], (
+                            mask_old_hybrid = get_action_mask(env, mask_risky=True)
+                            assert not mask_old_hybrid[ACTION_LEFT], (
                                 "mask_risky=True must block turning left when "
                                 "the resulting front cell is lava."
                             )

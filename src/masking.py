@@ -16,7 +16,7 @@ is_unsafe_action(env, action) -> bool
 is_risky_action(env, action) -> bool
     True when the action would place the agent in a cell that neighbours
     lava (or would cause the agent to face lava after a turn).
-    Used by Method 4 (hybrid) and Method 5 (soft masking); not blocked by
+    Used by Method 4 (hybrid) and Method 5 (old_hybrid masking); not blocked by
     hard masking in Method 3.
 
 get_nearby_lava_info(env) -> dict
@@ -158,7 +158,7 @@ def is_risky_action(env: gym.Env, action: int) -> bool:
       - adjacent to ≥1 lava cell (after a forward move to a safe cell).
 
     This function is intentionally conservative: it returns True whenever
-    the *post-action* state neighbours lava, so hybrid / soft-masking
+    the *post-action* state neighbours lava, so hybrid / old_hybrid-masking
     methods can decide how to penalise or down-weight these actions without
     changing the hard-masking logic.
 
@@ -220,7 +220,7 @@ def get_nearby_lava_info(env: gym.Env) -> dict:
     would_face_lava_right : bool – after turning right the agent faces lava
 
     This structured output is used by logging hooks and can be directly
-    consumed by hybrid / soft-masking implementations.
+    consumed by hybrid / old_hybrid-masking implementations.
     """
     raw = _unwrapped(env)
     pos = np.array(raw.agent_pos)

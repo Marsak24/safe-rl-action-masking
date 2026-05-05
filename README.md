@@ -4,6 +4,8 @@
 ## Overview
 This project investigates the trade-off between **safety and exploration** in reinforcement learning. We compare multiple PPO-based approaches for enforcing safety in constrained environments using the MiniGrid LavaGap benchmark.
 
+![LavaGap S7](lavagap_s7.gif)
+
 We evaluate:
 - **Vanilla PPO** (baseline)
 - **Penalty-based PPO**

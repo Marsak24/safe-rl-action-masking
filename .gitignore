@@ -18,6 +18,18 @@ results/vanilla_ppo/*
 results/penalty_ppo/*
 !results/penalty_ppo/summary.csv
 !results/penalty_ppo/summary_aggregated.csv
+
+!results/old_hybrid_masked_ppo/
+results/old_hybrid_masked_ppo/*
+!results/old_hybrid_masked_ppo/low_penalty/
+results/old_hybrid_masked_ppo/low_penalty/*
+!results/old_hybrid_masked_ppo/low_penalty/summary.csv
+!results/old_hybrid_masked_ppo/low_penalty/summary_aggregated.csv
+!results/old_hybrid_masked_ppo/high_penalty/
+results/old_hybrid_masked_ppo/high_penalty/*
+!results/old_hybrid_masked_ppo/high_penalty/summary.csv
+!results/old_hybrid_masked_ppo/high_penalty/summary_aggregated.csv
+
 !results/hybrid_variant1_ppo/
 results/hybrid_variant1_ppo/*
 !results/hybrid_variant1_ppo/high penalty/

@@ -1,0 +1,6 @@
+,episodes_logged,episodes_logged,eval_mean_length,eval_mean_length,eval_mean_masked_unsafe,eval_mean_masked_unsafe,eval_mean_reward,eval_mean_reward,eval_mean_violations,eval_mean_violations,eval_std_reward,eval_std_reward,eval_success_rate,eval_success_rate,final_reward_mean_10,final_reward_mean_10,mean_length,mean_length,mean_masked_unsafe,mean_masked_unsafe,mean_reward,mean_reward,mean_violations,mean_violations,success_rate,success_rate
+,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std
+env_id,,,,,,,,,,,,,,,,,,,,,,,,,,
+MiniGrid-LavaCrossingS11N5-v0,622.0,0.0,484.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,483.6520900321543,0.3214340650097753,0.0,0.0,0.0008398660678695755,0.0007709184266583663,0.0,0.0,0.0019292604501607719,0.002096206561158408
+MiniGrid-LavaCrossingS9N1-v0,938.4,20.46460358765838,324.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.03805555555555555,0.08509480914374198,320.7347175445017,6.698212223720173,0.0,0.0,0.011071052789602045,0.02241935116373527,0.0,0.0,0.020008237465510288,0.038133626392366254
+MiniGrid-LavaCrossingS9N3-v0,929.4,0.5477225575051505,324.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,323.79479125432596,0.20326894985016028,0.0,0.0,0.0007206082258514634,0.0006834789809045165,0.0,0.0,0.0015058393231246457,0.0012257921981354539

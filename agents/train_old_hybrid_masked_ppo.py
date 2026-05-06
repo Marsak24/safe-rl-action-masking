@@ -18,6 +18,7 @@ Run
 
 from __future__ import annotations
 
+import argparse
 import os
 import random
 
@@ -39,7 +40,7 @@ from metrics.plot_results import (
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BASE_DIR    = "results/old_hybrid_masked_ppo_p001"
+BASE_DIR    = "results/old_hybrid_masked_ppo/low_penalty"
 MODELS_DIR  = os.path.join(BASE_DIR, "models")
 VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
 SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
@@ -48,7 +49,7 @@ AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
 MASK_RISKY    = False   # risky actions are penalised, not blocked
 RISKY_PENALTY = 0.01    # reward deducted per risky action taken (reduced from 0.1)
 
-ENV_IDS = [
+DEFAULT_ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",
     "MiniGrid-LavaGapS6-v0",
     "MiniGrid-LavaGapS7-v0",
@@ -159,20 +160,22 @@ def set_seed(seed: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def main(args) -> None:
+    env_ids = args.env if args.env is not None else DEFAULT_ENV_IDS
+
     for d in (BASE_DIR, MODELS_DIR, VIDEOS_DIR):
         os.makedirs(d, exist_ok=True)
 
     summary_rows: list[dict] = []
     seed_csv_paths: dict[str, list[str]] = {
         env_id.replace("MiniGrid-", "").replace("-v0", "").lower(): []
-        for env_id in ENV_IDS
+        for env_id in env_ids
     }
 
     for seed in SEEDS:
         set_seed(seed)
 
-        for env_id in ENV_IDS:
+        for env_id in env_ids:
             env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
 
             env_out_dir = os.path.join(BASE_DIR, env_tag, f"seed_{seed}")
@@ -270,7 +273,7 @@ def main() -> None:
     )
     agg_df.to_csv(AGG_CSV)
 
-    for env_id in ENV_IDS:
+    for env_id in env_ids:
         env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
         plot_aggregated_curves(
             seed_csv_paths=seed_csv_paths[env_tag],
@@ -285,4 +288,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", nargs="+", default=None,
+                        help="Environment IDs to train on (default: LavaGap S5/S6/S7)")
+    args = parser.parse_args()
+    main(args)

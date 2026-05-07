@@ -58,6 +58,9 @@ EVAL_CONFIGS = [
         "models_dir": "results/soft_action_masked_ppo/models",
         "suffix":     "soft_action_masked_ppo",
         "wrapper":    "soft",  # float logit adjustments via SoftMaskableActorCriticPolicy
+        "label":      "old_hybrid Masked PPO (penalty=0.01)",
+        "models_dir": "results/old_hybrid_masked_ppo_p001/models",
+        "suffix":     "old_hybrid_masked_ppo",
     },
 ]
 

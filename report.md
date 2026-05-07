@@ -15,6 +15,8 @@ This report documents all experiments run to evaluate safe reinforcement learnin
 | **Vanilla PPO** | Standard PPO with no safety mechanism |
 | **Penalty PPO** | PPO with a −0.5 reward penalty for entering lava |
 | **Penalty PPO (Adjacent)** | PPO with −0.5 lava penalty + small penalty (−0.01) for adjacent-to-lava states |
+| **Penalty PPO (Adjacent 0.01)** | PPO with −0.5 lava penalty + small penalty (−0.01) for adjacent-to-lava states |
+| **Penalty PPO (Adjacent, 0.05)** | −0.5 lava penalty + −0.05 adjacent penalty |
 | **Hard Masked PPO** | MaskablePPO with forward-into-lava action hard-blocked |
 | **Hybrid Masked PPO (penalty=0.1)** | Hard block on unsafe actions + −0.1 penalty on risky actions |
 | **Hybrid Masked PPO (penalty=0.01)** | Hard block on unsafe actions + −0.01 penalty on risky actions |
@@ -234,6 +236,9 @@ This tradeoff is known in the safe RL literature as **safety vs. policy transfer
 - The mask will not be available at deployment time and transferability is the top priority
 - Some training-time violations are acceptable
 - A consistent, tuning-free safety signal is preferred (no penalty hyperparameter to tune)
+
+The adjacent penalty variant further highlights the limitations of reward shaping. While it provides earlier safety feedback, it penalizes states that are often necessary for optimal trajectories, leading to degraded performance in more complex environments.
+
 
 **Vanilla PPO** provides a useful baseline and is surprisingly competitive on S7 compared to penalty PPO, demonstrating that unconstrained exploration sometimes outperforms naive reward shaping.
 

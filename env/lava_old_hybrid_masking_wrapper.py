@@ -1,9 +1,9 @@
 """
-env/lava_soft_masking_wrapper.py
+env/lava_old_hybrid_masking_wrapper.py
 =================================
-Soft masking wrapper for MiniGrid/LavaGap.
+old_hybrid masking wrapper for MiniGrid/LavaGap.
 
-Soft masking strategy
+old_hybrid masking strategy
 ---------------------
 * UNSAFE actions (forward into lava) are HARD-BLOCKED via the action mask —
   the safety guarantee is never relaxed.
@@ -13,14 +13,14 @@ Soft masking strategy
 This is distinct from:
   - Hard masking  (Method 3): blocks unsafe only
   - Hybrid masking (Method 4): blocks both unsafe + risky
-  - Soft masking  (Method 5, this file): blocks unsafe, penalises risky
+  - old_hybrid masking  (Method 5, this file): blocks unsafe, penalises risky
 
 Usage with MaskablePPO
 ----------------------
-    from env.lava_soft_masking_wrapper import make_soft_masked_env
+    from env.lava_old_hybrid_masking_wrapper import make_old_hybrid_masked_env
     from sb3_contrib import MaskablePPO
 
-    env   = make_soft_masked_env("MiniGrid-LavaGapS5-v0", seed=0)
+    env   = make_old_hybrid_masked_env("MiniGrid-LavaGapS5-v0", seed=0)
     model = MaskablePPO("MlpPolicy", env, verbose=1, device="cpu")
     model.learn(total_timesteps=300_000)
 """
@@ -34,9 +34,9 @@ from env.lava_logging_wrapper import LavaLoggingWrapper
 from src.masking import get_action_mask, is_risky_action, get_nearby_lava_info
 
 
-class LavaSoftMaskingWrapper(LavaLoggingWrapper):
+class Lavaold_hybridMaskingWrapper(LavaLoggingWrapper):
     """
-    Extends LavaLoggingWrapper with soft masking:
+    Extends LavaLoggingWrapper with old_hybrid masking:
       - action_masks() hard-blocks only UNSAFE actions (forward into lava).
       - Risky actions are penalised via a reward deduction, not blocked.
 
@@ -97,7 +97,7 @@ class LavaSoftMaskingWrapper(LavaLoggingWrapper):
 
         adjusted_reward = float(reward)
 
-        # Apply soft penalty for risky actions
+        # Apply old_hybrid penalty for risky actions
         if action_is_risky:
             adjusted_reward        -= self.risky_penalty
             self.risky_actions_taken  += 1
@@ -119,17 +119,17 @@ class LavaSoftMaskingWrapper(LavaLoggingWrapper):
 # Factory helpers
 # ---------------------------------------------------------------------------
 
-def make_soft_masked_env(
+def make_old_hybrid_masked_env(
     env_id: str,
     seed: int = 0,
     risky_penalty: float = 0.1,
     render_mode: str | None = None,
 ) -> gym.Env:
     """
-    Build the canonical training environment for soft-masked PPO experiments.
+    Build the canonical training environment for old_hybrid-masked PPO experiments.
 
     Wrapper stack (outermost first):
-        ActionMasker  →  LavaSoftMaskingWrapper  →  FlatObsWrapper  →  MiniGrid
+        ActionMasker  →  Lavaold_hybridMaskingWrapper  →  FlatObsWrapper  →  MiniGrid
 
     Parameters
     ----------
@@ -149,19 +149,19 @@ def make_soft_masked_env(
     env.reset(seed=seed)
     env.action_space.seed(seed)
     env = FlatObsWrapper(env)
-    env = LavaSoftMaskingWrapper(env, risky_penalty=risky_penalty)
+    env = Lavaold_hybridMaskingWrapper(env, risky_penalty=risky_penalty)
     env = ActionMasker(env, lambda e: e.action_masks())
 
     return env
 
 
-def make_soft_masked_video_env(
+def make_old_hybrid_masked_video_env(
     env_id: str,
     video_folder: str,
     seed: int = 0,
     risky_penalty: float = 0.1,
 ) -> gym.Env:
-    """Like make_soft_masked_env but with RecordVideo for rollout recording."""
+    """Like make_old_hybrid_masked_env but with RecordVideo for rollout recording."""
     from gymnasium.wrappers import RecordVideo
     from sb3_contrib.common.wrappers import ActionMasker
     from minigrid.wrappers import FlatObsWrapper
@@ -169,8 +169,8 @@ def make_soft_masked_video_env(
     env = gym.make(env_id, render_mode="rgb_array")
     env.reset(seed=seed)
     env = FlatObsWrapper(env)
-    soft_env = LavaSoftMaskingWrapper(env, risky_penalty=risky_penalty)
-    env = RecordVideo(soft_env, video_folder=video_folder, episode_trigger=lambda x: True)
-    env = ActionMasker(env, lambda e: soft_env.action_masks())
+    old_hybrid_env = Lavaold_hybridMaskingWrapper(env, risky_penalty=risky_penalty)
+    env = RecordVideo(old_hybrid_env, video_folder=video_folder, episode_trigger=lambda x: True)
+    env = ActionMasker(env, lambda e: old_hybrid_env.action_masks())
 
     return env

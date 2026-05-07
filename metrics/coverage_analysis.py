@@ -1,68 +1,55 @@
 """
 metrics/coverage_analysis.py
 =============================
-Computes state-coverage metrics from visit_counts.npy files produced
-during training, and saves a summary CSV + all plots to
-results/coverage_analysis/.
+Produces meaningful comparison plots from already-collected experiment data.
 
-Metrics computed per method × env × seed
------------------------------------------
-  coverage_rate   : unique cells visited / navigable cells
-                    (navigable = union of all cells ever reached by any
-                     method across all seeds for that env — best proxy
-                     without re-instantiating the environment)
-  visit_entropy   : Shannon entropy of the visit distribution
-                    H = -sum_s p(s) log p(s), p(s) = visits(s)/total
-                    Higher → more spread-out exploration
-  peak_fraction   : max_cell_visits / total_visits
-                    Lower → less path repetition / looping
+Reads from:
+  results/<method>/summary.csv                          (all methods)
+  results/<method>/<env>/seed_*/visit_counts.npy        (methods with visit-count data)
 
-Plots produced
---------------
-  results/coverage_analysis/
-    coverage_metrics.csv          — per-seed and mean/std rows
-    heatmaps/
-      <env>_<method>_mean_heatmap.png   — mean visit map averaged over seeds
-      <env>_all_methods.png             — side-by-side comparison per env
-    charts/
-      <env>_coverage_rate.png
-      <env>_visit_entropy.png
-      <env>_peak_fraction.png
-      all_envs_overview.png             — 3×3 subplot overview
+Outputs to results/coverage_analysis/:
+  eval_success_rate.png      -- success rate +/- std, all methods x 3 envs
+  eval_reward.png            -- mean reward +/- std
+  convergence_timestep.png   -- convergence speed (NaN -> 300k = "no convergence")
+  training_violations.png    -- mean training violations +/- std
+  visit_entropy.png          -- Shannon entropy of visit distribution
+  overview.png               -- combined 2x2 figure
+  heatmaps/
+    lavagaps{5,6,7}_methods.png -- mean visit heatmap grid per env
 
-Run
----
+Run from project root:
     python -m metrics.coverage_analysis
 """
 
 from __future__ import annotations
-
-import os
-import csv
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from scipy.stats import entropy as scipy_entropy
+
 
 # ---------------------------------------------------------------------------
-# Configuration — edit if result dirs ever change
+# Configuration
 # ---------------------------------------------------------------------------
 
-BASE = Path("results")
+SEEDS = [0, 1, 2, 3, 4]
+TOTAL_TIMESTEPS = 300_000
+OUT_DIR = Path("results/coverage_analysis")
 
-# label → (result_base_dir, env_tag_suffix)
-# env_tag_suffix is the suffix used in the folder name, e.g. "lavagaps5"
-METHODS: dict[str, str] = {
-    "Vanilla PPO":     "vanilla_ppo",
-    "Hard Masking":    "masked_ppo",
-    "Soft Masking":    "soft_action_masked_ppo",
-    "Hybrid (p=0.1)":  "soft_masked_ppo",
-    "Hybrid (p=0.01)": "soft_masked_ppo_p001",
-}
+# (display label, result base dir, visit_counts base dir or None)
+METHODS = [
+    ("Vanilla PPO", "results/vanilla_ppo", "results/vanilla_ppo"),
+    ("Penalty PPO", "results/penalty_ppo_0.5", "results/penalty_ppo_0.5"),
+    ("Hard Masking", "results/masked_ppo", "results/masked_ppo"),
+    ("Soft Masking", "results/soft_action_masked_ppo", "results/soft_action_masked_ppo"),
+    ("Hybrid p=0.1", "results/soft_masked_ppo", "results/soft_masked_ppo"),
+    ("Hybrid p=0.01", "results/soft_masked_ppo_p001", "results/soft_masked_ppo_p001"),
+]
 
 ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",
@@ -76,398 +63,532 @@ ENV_TAG = {
     "MiniGrid-LavaGapS7-v0": "lavagaps7",
 }
 
-SEEDS = [0, 1, 2, 3, 4]
+ENV_SHORT = {
+    "MiniGrid-LavaGapS5-v0": "LavaGap S5",
+    "MiniGrid-LavaGapS6-v0": "LavaGap S6",
+    "MiniGrid-LavaGapS7-v0": "LavaGap S7",
+}
 
-OUT_DIR      = Path("results/coverage_analysis")
-HEATMAP_DIR  = OUT_DIR / "heatmaps"
-CHART_DIR    = OUT_DIR / "charts"
+# One colour per method, in the same order as METHODS
+# COLOURS = ["#555555", "#E67E22", "#2196F3", "#FF9800", "#4CAF50", "#9C27B0"]
+COLOURS = [
+    "#555555",  # Vanilla PPO - dark gray
+    "#D62728",  # Penalty PPO - red
+    "#1F77B4",  # Hard Masking - blue
+    "#FFB000",  # Soft Masking - yellow/orange
+    "#2CA02C",  # Hybrid p=0.1 - green
+    "#9467BD",  # Hybrid p=0.01 - purple
+]
+METHOD_TO_COLOUR = {
+    label: COLOURS[i]
+    for i, (label, _, _) in enumerate(METHODS)
+}
 
-# Colour palette — one colour per method (order matches METHODS)
-PALETTE = ["#555555", "#2196F3", "#FF9800", "#4CAF50", "#9C27B0"]
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Data helpers
 # ---------------------------------------------------------------------------
 
-def _load_visit_counts(method_dir: str, env_tag: str, seed: int) -> np.ndarray | None:
-    """Load visit_counts.npy for a given method / env / seed, return None if missing."""
-    path = BASE / method_dir / env_tag / f"seed_{seed}" / "visit_counts.npy"
-    if not path.exists():
+def load_summary(result_dir: str) -> pd.DataFrame | None:
+    p = Path(result_dir) / "summary.csv"
+
+    if not p.exists():
+        print(f"  warning: missing summary file: {p}")
         return None
-    vc = np.load(path).astype(np.float64)
-    return vc
+
+    return pd.read_csv(p)
 
 
-def _coverage_rate(vc: np.ndarray, navigable_mask: np.ndarray) -> float:
-    """Fraction of navigable cells visited at least once."""
-    navigable_n = int(navigable_mask.sum())
-    if navigable_n == 0:
-        return float("nan")
-    visited = int((vc[navigable_mask] > 0).sum())
-    return visited / navigable_n
+def agg(
+    df: pd.DataFrame,
+    env_id: str,
+    col: str,
+    fill_nan: float | None = None,
+) -> tuple[float, float]:
+    if col not in df.columns:
+        print(f"  warning: missing column '{col}' in summary.csv")
+        return float("nan"), 0.0
+
+    sub = df[df["env_id"] == env_id][col].copy()
+
+    if fill_nan is not None:
+        sub = sub.fillna(fill_nan)
+
+    sub = sub.dropna()
+
+    if len(sub) == 0:
+        return float("nan"), 0.0
+
+    return float(sub.mean()), float(sub.std())
 
 
-def _visit_entropy(vc: np.ndarray) -> float:
-    """Shannon entropy of the visit distribution (base-2 bits)."""
-    flat = vc.flatten()
-    total = flat.sum()
-    if total == 0:
-        return 0.0
-    probs = flat[flat > 0] / total
-    return float(scipy_entropy(probs, base=2))
+def visit_entropy(vc_base: str, env_tag: str) -> tuple[float, float]:
+    vals = []
+
+    for seed in SEEDS:
+        p = Path(vc_base) / env_tag / f"seed_{seed}" / "visit_counts.npy"
+
+        if not p.exists():
+            continue
+
+        vc = np.load(p).astype(np.float64).flatten()
+        total = vc.sum()
+
+        if total == 0:
+            continue
+
+        prob = vc[vc > 0] / total
+        entropy = float((-prob * np.log2(prob)).sum())
+        vals.append(entropy)
+
+    if not vals:
+        return float("nan"), 0.0
+
+    return float(np.mean(vals)), float(np.std(vals))
 
 
-def _peak_fraction(vc: np.ndarray) -> float:
-    """Fraction of all visits concentrated in the single most-visited cell."""
-    total = vc.sum()
-    if total == 0:
-        return float("nan")
-    return float(vc.max() / total)
+def mean_visit_grid(vc_base: str, env_tag: str) -> np.ndarray | None:
+    arrays = []
+
+    for seed in SEEDS:
+        p = Path(vc_base) / env_tag / f"seed_{seed}" / "visit_counts.npy"
+
+        if p.exists():
+            arrays.append(np.load(p).astype(np.float64))
+
+    if not arrays:
+        return None
+
+    return np.mean(np.stack(arrays), axis=0)
 
 
-def _navigable_mask(env_tag: str) -> np.ndarray:
+def remove_empty_methods(
+    data: dict[str, list[tuple[float, float]]],
+) -> dict[str, list[tuple[float, float]]]:
     """
-    Build a navigable-cell mask for an env as the union of all cells ever
-    visited by any method across all seeds.  This avoids reimplementing
-    MiniGrid's grid parser while remaining accurate for reachable cells.
-    """
-    union: np.ndarray | None = None
-    for method_dir in METHODS.values():
-        for seed in SEEDS:
-            vc = _load_visit_counts(method_dir, env_tag, seed)
-            if vc is None:
-                continue
-            if union is None:
-                union = (vc > 0)
-            else:
-                union = union | (vc > 0)
-    if union is None:
-        raise RuntimeError(f"No visit_counts.npy found for env {env_tag}")
-    return union
+    Remove methods where all means are NaN.
 
+    This prevents invisible empty bars from being included in the legend.
+    """
+    cleaned = {}
+
+    for label, values in data.items():
+        means = [mean for mean, _ in values]
+
+        if not all(np.isnan(mean) for mean in means):
+            cleaned[label] = values
+        else:
+            print(f"  warning: no valid values found for {label}; skipping from plot")
+
+    return cleaned
+
+
+def colours_for(data: dict[str, list[tuple[float, float]]]) -> list[str]:
+    """
+    Return colours in the exact same order as the plotted method labels.
+
+    This is the important fix. It avoids using slices like COLOURS[2:],
+    which caused Penalty PPO to be mismatched or dropped in the entropy plot.
+    """
+    return [METHOD_TO_COLOUR[label] for label in data.keys()]
+
+
+# ---------------------------------------------------------------------------
+# Plotting helpers
+# ---------------------------------------------------------------------------
 
 def _save(fig: plt.Figure, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
+    print(f"  saved -> {path}")
 
 
-# ---------------------------------------------------------------------------
-# Metric collection
-# ---------------------------------------------------------------------------
-
-def collect_metrics() -> list[dict]:
-    """
-    Returns a list of dicts, one per (method, env, seed), with keys:
-        method, env_id, seed,
-        coverage_rate, visit_entropy, peak_fraction,
-        total_visits, unique_cells, navigable_cells
-    """
-    rows: list[dict] = []
-
-    for env_id in ENV_IDS:
-        env_tag = ENV_TAG[env_id]
-        print(f"\n[coverage] {env_id}")
-
-        try:
-            nav_mask = _navigable_mask(env_tag)
-        except RuntimeError as e:
-            print(f"  SKIP: {e}")
-            continue
-
-        navigable_n = int(nav_mask.sum())
-
-        for label, method_dir in METHODS.items():
-            for seed in SEEDS:
-                vc = _load_visit_counts(method_dir, env_tag, seed)
-                if vc is None:
-                    continue
-
-                cr  = _coverage_rate(vc, nav_mask)
-                ent = _visit_entropy(vc)
-                pf  = _peak_fraction(vc)
-                tot = int(vc.sum())
-                uniq = int((vc[nav_mask] > 0).sum())
-
-                rows.append(dict(
-                    method          = label,
-                    env_id          = env_id,
-                    seed            = seed,
-                    coverage_rate   = cr,
-                    visit_entropy   = ent,
-                    peak_fraction   = pf,
-                    total_visits    = tot,
-                    unique_cells    = uniq,
-                    navigable_cells = navigable_n,
-                ))
-                print(f"  {label:20s} seed={seed}  cov={cr:.3f}  H={ent:.2f} bits  peak={pf:.3f}")
-
-    return rows
-
-
-def save_csv(rows: list[dict], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not rows:
-        return
-    fields = list(rows[0].keys())
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    # Also write an aggregated (mean ± std over seeds) version
-    agg_rows: list[dict] = []
-    metric_cols = ["coverage_rate", "visit_entropy", "peak_fraction",
-                   "total_visits", "unique_cells"]
-    seen: set[tuple] = set()
-    for r in rows:
-        key = (r["method"], r["env_id"])
-        if key in seen:
-            continue
-        seen.add(key)
-        group = [x for x in rows if x["method"] == r["method"] and x["env_id"] == r["env_id"]]
-        agg = dict(method=r["method"], env_id=r["env_id"], n_seeds=len(group),
-                   navigable_cells=r["navigable_cells"])
-        for col in metric_cols:
-            vals = [x[col] for x in group]
-            agg[f"{col}_mean"] = float(np.mean(vals))
-            agg[f"{col}_std"]  = float(np.std(vals))
-        agg_rows.append(agg)
-
-    agg_path = path.parent / (path.stem + "_aggregated.csv")
-    agg_fields = list(agg_rows[0].keys()) if agg_rows else []
-    with open(agg_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=agg_fields)
-        writer.writeheader()
-        writer.writerows(agg_rows)
-    print(f"\n[coverage] Saved {path}")
-    print(f"[coverage] Saved {agg_path}")
-
-
-# ---------------------------------------------------------------------------
-# Heatmaps
-# ---------------------------------------------------------------------------
-
-def plot_mean_heatmap(
-    method_dir: str, label: str, env_id: str, env_tag: str,
-    nav_mask: np.ndarray,
-) -> np.ndarray | None:
-    """Average visit_counts across seeds and return the mean array (also saves png)."""
-    arrays = []
-    for seed in SEEDS:
-        vc = _load_visit_counts(method_dir, env_tag, seed)
-        if vc is not None:
-            arrays.append(vc)
-    if not arrays:
-        return None
-
-    mean_vc = np.mean(np.stack(arrays, axis=0), axis=0)
-
-    fig, ax = plt.subplots(figsize=(4, 4))
-    im = ax.imshow(mean_vc.T, origin="lower", aspect="equal", cmap="YlOrRd")
-    fig.colorbar(im, ax=ax, label="Mean visits")
-    # Overlay navigable boundary in grey
-    ax.contour(nav_mask.T.astype(float), levels=[0.5], colors="steelblue",
-               linewidths=0.8, linestyles="--", alpha=0.6)
-    ax.set_title(f"{label}\n{env_id}", fontsize=9)
-    ax.set_xlabel("Grid X")
-    ax.set_ylabel("Grid Y")
-
-    safe_label = label.replace(" ", "_").replace("(", "").replace(")", "").replace("=", "")
-    _save(fig, HEATMAP_DIR / f"{env_tag}_{safe_label}_mean_heatmap.png")
-    return mean_vc
-
-
-def plot_all_methods_heatmap(env_id: str, env_tag: str, nav_mask: np.ndarray) -> None:
-    """Side-by-side heatmap for all methods, one figure per env."""
-    method_items = [(label, d) for label, d in METHODS.items()]
-    n = len(method_items)
-    fig, axes = plt.subplots(1, n, figsize=(3.5 * n, 3.8))
-    fig.suptitle(f"Mean Visit Heatmaps — {env_id}", fontsize=12, y=1.02)
-
-    all_means = []
-    for label, method_dir in method_items:
-        arrays = []
-        for seed in SEEDS:
-            vc = _load_visit_counts(method_dir, env_tag, seed)
-            if vc is not None:
-                arrays.append(vc)
-        if arrays:
-            all_means.append(np.mean(np.stack(arrays, axis=0), axis=0))
-        else:
-            all_means.append(None)
-
-    # Shared colour scale
-    vmax_global = max((m.max() for m in all_means if m is not None), default=1.0)
-
-    for ax, (label, _), mean_vc in zip(axes, method_items, all_means):
-        if mean_vc is None:
-            ax.set_title(label + "\n(no data)", fontsize=8)
-            ax.axis("off")
-            continue
-        norm = mcolors.LogNorm(vmin=max(mean_vc[mean_vc > 0].min(), 1e-1),
-                               vmax=vmax_global) if mean_vc.max() > 0 else None
-        im = ax.imshow(mean_vc.T, origin="lower", aspect="equal",
-                       cmap="YlOrRd", norm=norm)
-        ax.contour(nav_mask.T.astype(float), levels=[0.5], colors="steelblue",
-                   linewidths=0.8, linestyles="--", alpha=0.5)
-        ax.set_title(label, fontsize=9)
-        ax.set_xlabel("Grid X", fontsize=7)
-        ax.set_ylabel("Grid Y", fontsize=7)
-        ax.tick_params(labelsize=6)
-        plt.colorbar(im, ax=ax, shrink=0.75)
-
-    _save(fig, HEATMAP_DIR / f"{env_tag}_all_methods.png")
-    print(f"[coverage] Heatmap grid saved: {HEATMAP_DIR / f'{env_tag}_all_methods.png'}")
-
-
-# ---------------------------------------------------------------------------
-# Bar charts
-# ---------------------------------------------------------------------------
-
-def _bar_chart(
-    rows: list[dict],
-    env_id: str,
-    metric: str,
+def _draw_grouped_bar(
+    ax: plt.Axes,
+    data: dict[str, list[tuple[float, float]]],
     ylabel: str,
     title: str,
-    fname: str,
+    colours: list[str],
+    hline: float | None = None,
+    hline_label: str = "",
+    ylim: tuple[float, float] | None = None,
+    legend: bool = True,
 ) -> None:
-    method_labels = list(METHODS.keys())
-    colours = PALETTE[: len(method_labels)]
+    """Draw a grouped bar chart onto an existing Axes."""
 
-    means, stds = [], []
-    for label in method_labels:
-        group = [r[metric] for r in rows
-                 if r["method"] == label and r["env_id"] == env_id]
-        if group:
-            means.append(float(np.mean(group)))
-            stds.append(float(np.std(group)))
-        else:
-            means.append(float("nan"))
-            stds.append(0.0)
+    method_labels = list(data.keys())
+    env_shorts = [ENV_SHORT[e] for e in ENV_IDS]
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    x = np.arange(len(method_labels))
-    bars = ax.bar(x, means, yerr=stds, capsize=4, color=colours, alpha=0.85,
-                  error_kw=dict(elinewidth=1.2, ecolor="black"))
+    n_methods = len(method_labels)
+    n_envs = len(env_shorts)
 
-    # Value annotations on top of bars
-    for bar, m, s in zip(bars, means, stds):
-        if not np.isnan(m):
-            ax.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + s + 0.005,
-                    f"{m:.3f}", ha="center", va="bottom", fontsize=8)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(method_labels, rotation=20, ha="right", fontsize=9)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"{title} — {env_id}")
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    _save(fig, CHART_DIR / fname)
-
-
-def plot_bar_charts(rows: list[dict]) -> None:
-    specs = [
-        ("coverage_rate",  "Coverage Rate (fraction)", "State Coverage Rate",  "coverage_rate"),
-        ("visit_entropy",  "Entropy (bits)",           "Visit Distribution Entropy", "visit_entropy"),
-        ("peak_fraction",  "Peak Cell Fraction",       "Peak Cell Concentration",    "peak_fraction"),
-    ]
-    for env_id in ENV_IDS:
-        env_tag = ENV_TAG[env_id]
-        for metric, ylabel, title, fname_stem in specs:
-            _bar_chart(
-                rows, env_id, metric, ylabel, title,
-                fname=f"{env_tag}_{fname_stem}.png",
-            )
-    print(f"[coverage] Bar charts saved to {CHART_DIR}/")
-
-
-# ---------------------------------------------------------------------------
-# Overview grid (3 envs × 3 metrics)
-# ---------------------------------------------------------------------------
-
-def plot_overview_grid(rows: list[dict]) -> None:
-    metrics   = ["coverage_rate", "visit_entropy", "peak_fraction"]
-    ylabels   = ["Coverage Rate", "Entropy (bits)", "Peak Cell Fraction"]
-    method_labels = list(METHODS.keys())
-    colours   = PALETTE[: len(method_labels)]
-
-    fig, axes = plt.subplots(len(metrics), len(ENV_IDS),
-                             figsize=(5 * len(ENV_IDS), 4 * len(metrics)),
-                             sharey="row")
-    fig.suptitle("State Coverage Metrics — All Methods × All Environments",
-                 fontsize=13, y=1.01)
-
-    for row_idx, (metric, ylabel) in enumerate(zip(metrics, ylabels)):
-        for col_idx, env_id in enumerate(ENV_IDS):
-            ax = axes[row_idx][col_idx]
-            means, stds = [], []
-            for label in method_labels:
-                group = [r[metric] for r in rows
-                         if r["method"] == label and r["env_id"] == env_id]
-                if group:
-                    means.append(float(np.mean(group)))
-                    stds.append(float(np.std(group)))
-                else:
-                    means.append(float("nan"))
-                    stds.append(0.0)
-
-            x = np.arange(len(method_labels))
-            ax.bar(x, means, yerr=stds, capsize=3, color=colours,
-                   alpha=0.85, error_kw=dict(elinewidth=1.0))
-            ax.set_xticks(x)
-            ax.set_xticklabels(method_labels, rotation=30, ha="right", fontsize=7)
-            if col_idx == 0:
-                ax.set_ylabel(ylabel, fontsize=9)
-            if row_idx == 0:
-                ax.set_title(env_id.replace("MiniGrid-", "").replace("-v0", ""),
-                             fontsize=10)
-            ax.grid(axis="y", linestyle="--", alpha=0.4)
-
-    _save(fig, CHART_DIR / "all_envs_overview.png")
-    print(f"[coverage] Overview grid saved: {CHART_DIR / 'all_envs_overview.png'}")
-
-
-# ---------------------------------------------------------------------------
-# Per-seed heatmap strip (shows variance across seeds for one method)
-# ---------------------------------------------------------------------------
-
-def plot_per_seed_strip(method_dir: str, label: str, env_tag: str, env_id: str) -> None:
-    """One row of heatmaps, one per seed, so variance is visible."""
-    arrays = []
-    for seed in SEEDS:
-        vc = _load_visit_counts(method_dir, env_tag, seed)
-        arrays.append(vc)
-
-    valid = [(s, a) for s, a in zip(SEEDS, arrays) if a is not None]
-    if not valid:
+    if n_methods == 0:
+        ax.set_title(title, fontsize=10)
+        ax.text(
+            0.5,
+            0.5,
+            "No data available",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=10,
+        )
         return
 
-    n = len(valid)
-    fig, axes = plt.subplots(1, n, figsize=(3 * n, 3.2))
-    if n == 1:
-        axes = [axes]
+    width = 0.8 / n_methods
+    x = np.arange(n_envs)
 
-    all_vals = np.concatenate([a.flatten() for _, a in valid])
-    vmax_g = all_vals.max() or 1.0
+    for i, (label, colour) in enumerate(zip(method_labels, colours)):
+        means = [data[label][j][0] for j in range(n_envs)]
+        stds = [data[label][j][1] for j in range(n_envs)]
 
-    for ax, (seed, vc) in zip(axes, valid):
-        norm = mcolors.LogNorm(vmin=max(vc[vc > 0].min(), 1e-1), vmax=vmax_g) \
-               if vc.max() > 0 else None
-        im = ax.imshow(vc.T, origin="lower", aspect="equal",
-                       cmap="YlOrRd", norm=norm)
-        ax.set_title(f"seed={seed}", fontsize=8)
-        ax.set_xlabel("Grid X", fontsize=7)
-        ax.set_ylabel("Grid Y", fontsize=7)
-        ax.tick_params(labelsize=6)
-        plt.colorbar(im, ax=ax, shrink=0.75)
+        offset = (i - n_methods / 2 + 0.5) * width
 
-    safe_label = label.replace(" ", "_").replace("(", "").replace(")", "").replace("=", "")
-    fig.suptitle(f"{label} — {env_id} — per-seed visits", fontsize=10)
-    _save(fig, HEATMAP_DIR / "per_seed" / f"{env_tag}_{safe_label}_per_seed.png")
-    print(f"[coverage] Per-seed strip saved: {env_tag}/{safe_label}")
+        ax.bar(
+            x + offset,
+            means,
+            width=width * 0.92,
+            yerr=stds,
+            capsize=3,
+            color=colour,
+            alpha=0.85,
+            label=label,
+            error_kw=dict(elinewidth=1.1, ecolor="black"),
+        )
+
+    if hline is not None:
+        ax.axhline(
+            hline,
+            color="grey",
+            linestyle="--",
+            linewidth=0.9,
+            label=hline_label,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(env_shorts, fontsize=9)
+    ax.set_xlabel("Environment", fontsize=9)
+    ax.set_ylabel(ylabel, fontsize=9)
+    ax.set_title(title, fontsize=10)
+
+    if ylim:
+        ax.set_ylim(*ylim)
+
+    if legend:
+        ax.legend(fontsize=7, framealpha=0.75)
+
+    ax.grid(axis="y", linestyle="--", alpha=0.35)
+
+
+def grouped_bar(
+    data: dict[str, list[tuple[float, float]]],
+    ylabel: str,
+    title: str,
+    out_path: Path,
+    colours: list[str],
+    hline: float | None = None,
+    hline_label: str = "",
+    ylim: tuple[float, float] | None = None,
+) -> None:
+    """Standalone grouped bar figure saved to disk."""
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+
+    _draw_grouped_bar(
+        ax,
+        data,
+        ylabel,
+        title,
+        colours,
+        hline=hline,
+        hline_label=hline_label,
+        ylim=ylim,
+    )
+
+    _save(fig, out_path)
+
+
+# ---------------------------------------------------------------------------
+# Individual plot functions
+# ---------------------------------------------------------------------------
+
+def plot_eval_metrics() -> None:
+    success = {}
+    reward = {}
+    conv = {}
+    viols = {}
+
+    for label, result_dir, _ in METHODS:
+        df = load_summary(result_dir)
+
+        if df is None:
+            continue
+
+        success[label] = [agg(df, e, "eval_success_rate") for e in ENV_IDS]
+        reward[label] = [agg(df, e, "eval_mean_reward") for e in ENV_IDS]
+        conv[label] = [
+            agg(df, e, "convergence_timestep", fill_nan=TOTAL_TIMESTEPS)
+            for e in ENV_IDS
+        ]
+        viols[label] = [agg(df, e, "mean_violations") for e in ENV_IDS]
+
+    success = remove_empty_methods(success)
+    reward = remove_empty_methods(reward)
+    conv = remove_empty_methods(conv)
+    viols = remove_empty_methods(viols)
+
+    grouped_bar(
+        success,
+        "Success Rate",
+        "Eval Success Rate (mean ± std over 5 seeds)",
+        OUT_DIR / "eval_success_rate.png",
+        colours_for(success),
+        ylim=(0, 1.15),
+    )
+
+    grouped_bar(
+        reward,
+        "Mean Reward",
+        "Eval Mean Reward (mean ± std over 5 seeds)",
+        OUT_DIR / "eval_reward.png",
+        colours_for(reward),
+    )
+
+    grouped_bar(
+        conv,
+        "Timestep",
+        f"Convergence Timestep [NaN capped at {TOTAL_TIMESTEPS:,} = did not converge]\n"
+        "(mean ± std over 5 seeds)",
+        OUT_DIR / "convergence_timestep.png",
+        colours_for(conv),
+        hline=TOTAL_TIMESTEPS,
+        hline_label="300k cap (no convergence)",
+    )
+
+    grouped_bar(
+        viols,
+        "Mean Violations / Episode",
+        "Training Violations (mean ± std over 5 seeds)",
+        OUT_DIR / "training_violations.png",
+        colours_for(viols),
+    )
+
+
+def plot_visit_entropy() -> None:
+    """
+    Plot visit entropy for methods that have visit_counts.npy data.
+
+    Penalty PPO is included here only if its visit_counts.npy files exist.
+    """
+    entropy_data = {}
+
+    for label, _, vc_base in METHODS:
+        if vc_base is None:
+            continue
+
+        entropy_data[label] = [
+            visit_entropy(vc_base, ENV_TAG[e])
+            for e in ENV_IDS
+        ]
+
+    entropy_data = remove_empty_methods(entropy_data)
+
+    grouped_bar(
+        entropy_data,
+        "Shannon Entropy (bits)",
+        "Visit Distribution Entropy [higher = more spread exploration]\n"
+        "(mean ± std over 5 seeds, methods with visit-count data)",
+        OUT_DIR / "visit_entropy.png",
+        colours_for(entropy_data),
+    )
+
+
+def plot_overview() -> None:
+    """Single 2x2 figure combining the 4 key metric panels."""
+
+    success = {}
+    reward = {}
+    viols = {}
+
+    for label, result_dir, _ in METHODS:
+        df = load_summary(result_dir)
+
+        if df is None:
+            continue
+
+        success[label] = [agg(df, e, "eval_success_rate") for e in ENV_IDS]
+        reward[label] = [agg(df, e, "eval_mean_reward") for e in ENV_IDS]
+        viols[label] = [agg(df, e, "mean_violations") for e in ENV_IDS]
+
+    entropy_data = {}
+
+    for label, _, vc_base in METHODS:
+        if vc_base is None:
+            continue
+
+        entropy_data[label] = [
+            visit_entropy(vc_base, ENV_TAG[e])
+            for e in ENV_IDS
+        ]
+
+    success = remove_empty_methods(success)
+    reward = remove_empty_methods(reward)
+    viols = remove_empty_methods(viols)
+    entropy_data = remove_empty_methods(entropy_data)
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+
+    fig.suptitle(
+        "Safe RL Method Comparison — Key Metrics",
+        fontsize=14,
+        fontweight="bold",
+        y=1.01,
+    )
+
+    _draw_grouped_bar(
+        axes[0, 0],
+        success,
+        "Success Rate",
+        "(a) Eval Success Rate",
+        colours_for(success),
+        ylim=(0, 1.18),
+        legend=True,
+    )
+
+    _draw_grouped_bar(
+        axes[0, 1],
+        reward,
+        "Mean Reward",
+        "(b) Eval Mean Reward",
+        colours_for(reward),
+        legend=False,
+    )
+
+    _draw_grouped_bar(
+        axes[1, 0],
+        viols,
+        "Mean Violations / Episode",
+        "(c) Training Violations",
+        colours_for(viols),
+        legend=False,
+    )
+
+    _draw_grouped_bar(
+        axes[1, 1],
+        entropy_data,
+        "Shannon Entropy (bits)",
+        "(d) Visit Entropy [methods with visit-count data]",
+        colours_for(entropy_data),
+        legend=True,
+    )
+
+    # Shared legend for all methods, based on panel (a)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=len(handles),
+        fontsize=9,
+        framealpha=0.8,
+        bbox_to_anchor=(0.5, -0.04),
+    )
+
+    # Remove internal legends to avoid duplication
+    for ax in axes.flat:
+        legend = ax.get_legend()
+
+        if legend:
+            legend.remove()
+
+    _save(fig, OUT_DIR / "overview.png")
+
+
+def plot_heatmaps() -> None:
+    """
+    Plot mean visit heatmaps for all methods that have visit_counts.npy data.
+
+    Vanilla PPO is skipped because its visit-count base directory is None.
+    Penalty PPO is included if the corresponding visit_counts.npy files exist.
+    """
+    methods_with_visits = [
+        (label, vc_base)
+        for label, _, vc_base in METHODS
+        if vc_base is not None
+    ]
+
+    heatmap_dir = OUT_DIR / "heatmaps"
+
+    for env_id in ENV_IDS:
+        env_tag = ENV_TAG[env_id]
+
+        grids = [
+            (label, mean_visit_grid(vc_base, env_tag))
+            for label, vc_base in methods_with_visits
+        ]
+
+        grids = [
+            (label, grid)
+            for label, grid in grids
+            if grid is not None
+        ]
+
+        if not grids:
+            print(f"  warning: no visit heatmap data found for {env_tag}")
+            continue
+
+        n = len(grids)
+
+        fig, axes = plt.subplots(1, n, figsize=(3.8 * n, 4.0))
+
+        if n == 1:
+            axes = [axes]
+
+        fig.suptitle(
+            f"Mean Visit Heatmap (training) — {env_id}",
+            fontsize=11,
+            y=1.02,
+        )
+
+        nonzero_values = [
+            grid[grid > 0].flatten()
+            for _, grid in grids
+            if np.any(grid > 0)
+        ]
+
+        if nonzero_values:
+            nonzero_all = np.concatenate(nonzero_values)
+            vmin_g = float(nonzero_all.min())
+            vmax_g = float(nonzero_all.max())
+        else:
+            vmin_g = 1.0
+            vmax_g = 1.0
+
+        for ax, (label, mean_vc) in zip(axes, grids):
+            norm = mcolors.LogNorm(
+                vmin=max(vmin_g, 1e-1),
+                vmax=max(vmax_g, max(vmin_g, 1e-1)),
+            )
+
+            im = ax.imshow(
+                mean_vc.T,
+                origin="lower",
+                aspect="equal",
+                cmap="YlOrRd",
+                norm=norm,
+            )
+
+            plt.colorbar(im, ax=ax, shrink=0.80, label="visits (log)")
+
+            ax.set_title(label, fontsize=9)
+            ax.set_xlabel("Grid X", fontsize=8)
+            ax.set_ylabel("Grid Y", fontsize=8)
+            ax.tick_params(labelsize=7)
+
+        _save(fig, heatmap_dir / f"{env_tag}_methods.png")
 
 
 # ---------------------------------------------------------------------------
@@ -475,44 +596,22 @@ def plot_per_seed_strip(method_dir: str, label: str, env_tag: str, env_id: str) 
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    for d in (OUT_DIR, HEATMAP_DIR, CHART_DIR, HEATMAP_DIR / "per_seed"):
-        d.mkdir(parents=True, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / "heatmaps").mkdir(exist_ok=True)
 
-    # --- 1. Collect metrics ------------------------------------------------
-    rows = collect_metrics()
-    if not rows:
-        print("[coverage] No visit_counts.npy files found. Exiting.")
-        return
+    print("\n[1/4] Eval metric bar charts ...")
+    plot_eval_metrics()
 
-    save_csv(rows, OUT_DIR / "coverage_metrics.csv")
+    print("\n[2/4] Visit entropy bar chart ...")
+    plot_visit_entropy()
 
-    # --- 2. Heatmaps -------------------------------------------------------
-    for env_id in ENV_IDS:
-        env_tag = ENV_TAG[env_id]
-        try:
-            nav_mask = _navigable_mask(env_tag)
-        except RuntimeError:
-            continue
+    print("\n[3/4] Combined overview figure ...")
+    plot_overview()
 
-        # Individual mean heatmaps
-        for label, method_dir in METHODS.items():
-            plot_mean_heatmap(method_dir, label, env_id, env_tag, nav_mask)
+    print("\n[4/4] Visit heatmaps ...")
+    plot_heatmaps()
 
-        # Side-by-side comparison grid
-        plot_all_methods_heatmap(env_id, env_tag, nav_mask)
-
-        # Per-seed strips (variance visualisation)
-        for label, method_dir in METHODS.items():
-            plot_per_seed_strip(method_dir, label, env_tag, env_id)
-
-    # --- 3. Bar charts -----------------------------------------------------
-    plot_bar_charts(rows)
-
-    # --- 4. Overview grid --------------------------------------------------
-    plot_overview_grid(rows)
-
-    print(f"\n[coverage] All outputs saved under: {OUT_DIR.resolve()}")
-    print("[coverage] Done.")
+    print(f"\nDone. All outputs in: {OUT_DIR.resolve()}")
 
 
 if __name__ == "__main__":

@@ -1,24 +1,37 @@
-
 # Safe Reinforcement Learning with Action Masking
 
 ## Overview
-This project investigates the trade-off between **safety and exploration** in reinforcement learning. We compare multiple PPO-based approaches for enforcing safety in constrained environments using the MiniGrid LavaGap benchmark.
+
+This project investigates the trade-off between **safety and exploration** in reinforcement learning. We compare multiple PPO-based approaches for enforcing safety in constrained environments using the [MiniGrid](https://minigrid.farama.org/) LavaGap and LavaCrossing benchmarks.
 
 ![LavaGap S7](lavagap_s7.gif)
 
-We evaluate:
-- **Vanilla PPO** (baseline)
-- **Penalty-based PPO**
-- **Penalty PPO with adjacent penalty**
-- **Hard Action Masking (MaskablePPO)**
-- **Soft Action Masking**
-- **Hybrid Masking (masking + penalties)**
+We implement and evaluate six approaches:
 
-The goal is to understand how different safety mechanisms affect:
-- learning performance
-- convergence speed
-- safety violations
-- generalization
+| Approach | Description |
+|---|---|
+| **Vanilla PPO** | Baseline with no safety mechanism |
+| **Penalty PPO** | Negative reward on lava contact |
+| **Penalty PPO (adjacent)** | Penalty extended to cells adjacent to lava |
+| **Hard Action Masking** | Uses `MaskablePPO`; illegal actions are zeroed out of the policy |
+| **Soft Action Masking** | Safety logit penalties applied at action selection |
+| **Hybrid Masking** | Combines hard masking with a penalty signal |
+
+The goal is to understand how these mechanisms affect:
+- Learning performance and convergence speed
+- Safety violations (lava contacts)
+- Exploration coverage
+- Generalization to unseen environments
+
+---
+
+## Requirements
+
+- Python 3.8+
+- [stable-baselines3](https://github.com/DLR-RM/stable-baselines3)
+- [sb3-contrib](https://github.com/Stable-Baselines-Team/stable-baselines3-contrib) (for `MaskablePPO`)
+- [minigrid](https://minigrid.farama.org/)
+- gymnasium, numpy, matplotlib, pandas, torch, pygame
 
 ---
 
@@ -28,18 +41,20 @@ The goal is to understand how different safety mechanisms affect:
 git clone https://github.com/Marsak24/safe-rl-action-masking
 cd safe-rl-action-masking
 pip install -r requirements.txt
-````
+```
 
 ---
 
 ## Project Structure
 
 ```
-agents/      # training scripts for all methods
-env/         # environment wrappers (masking, penalties)
-metrics/     # evaluation, logging, plotting
-results/     # experiment outputs
-tests/       # unit tests
+safe-rl-action-masking/
+├── agents/       # Training scripts for each method
+├── env/          # Environment wrappers (masking, penalties, logging)
+├── metrics/      # Evaluation, logging, and plotting utilities
+├── results/      # Experiment outputs (CSV logs, plots, videos)
+├── src/          # Core masking utilities
+└── tests/        # Unit tests
 ```
 
 ---
@@ -58,24 +73,46 @@ python agents/train_ppo_multi_env_logging.py
 python agents/train_penalty.py
 ```
 
-### Hard Masking
+### Hard Action Masking (MaskablePPO)
 
 ```bash
 python agents/train_masked_ppo.py
 ```
 
-### Soft Masking
+### Hybrid Masking
 
 ```bash
-python agents/train_soft_masked_ppo.py
+python agents/train_hybrid_ppo.py
 ```
+
+### Hybrid Adaptive Masking
+
+```bash
+python agents/train_hybrid_adaptive_ppo.py
+```
+
+> **Note:** Each training script runs across multiple random seeds and saves logs, models, and videos under `results/`.
 
 ---
 
 ## Evaluation
 
+Evaluate a trained agent on held-out environments:
+
 ```bash
 python metrics/evaluation.py
+```
+
+Evaluate without masking (mask removal test):
+
+```bash
+python metrics/eval_without_mask.py
+```
+
+Plot aggregated results across all methods:
+
+```bash
+python metrics/plot_results.py
 ```
 
 ---
@@ -84,34 +121,40 @@ python metrics/evaluation.py
 
 Each run produces:
 
-* Training logs (CSV)
-* Evaluation metrics (reward, success rate, violations)
-* Aggregated summaries across seeds
-* Plots (learning curves, convergence)
-* Visitation heatmaps
-* Videos of agent behavior
+- Training logs (CSV) per seed and aggregated summaries
+- Evaluation metrics: reward, success rate, lava violations
+- Learning curve and convergence plots
+- Exploration heatmaps
+- Recorded videos of agent behavior
+
+Results are organized under `results/<method>/`.
 
 ---
 
 ## Environments
 
-* MiniGrid-LavaGapS5-v0
-* MiniGrid-LavaGapS6-v0
-* MiniGrid-LavaGapS7-v0
+**Primary (training):**
+- `MiniGrid-LavaGapS5-v0`
+- `MiniGrid-LavaGapS6-v0`
+- `MiniGrid-LavaGapS7-v0`
 
-Additional:
+**Generalization (held-out):**
+- `MiniGrid-LavaCrossingS9N1-v0`
+- `MiniGrid-LavaCrossingS9N3-v0`
+- `MiniGrid-LavaCrossingS11N5-v0`
 
-* LavaCrossing environments (for generalization)
+---
+
+## Results
+
+Full training logs, plots, and videos are available here:
+[Detailed Training Results and Plots](https://mailaub-my.sharepoint.com/:f:/g/personal/shi12_mail_aub_edu/IgBuB5hg8Z3NQZLDu0Gp4B0VAYFsbAECKZFIwUh6kWbEHfk?e=JecLBw)
 
 ---
 
 ## Authors
 
-* Marwah Al Sakkaf
-* Sara Ibrahim
-* Rawan Darwich
-* Haifa Naim
-
-
-[Detailed Training Results and Plots](https://mailaub-my.sharepoint.com/:f:/g/personal/shi12_mail_aub_edu/IgBuB5hg8Z3NQZLDu0Gp4B0VAYFsbAECKZFIwUh6kWbEHfk?e=JecLBw)
----
+- Marwah Al Sakkaf
+- Sara Ibrahim
+- Rawan Darwich
+- Haifa Naim

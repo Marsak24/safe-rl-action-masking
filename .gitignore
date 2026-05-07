@@ -35,7 +35,6 @@ results/hybrid_adaptive_ppo/*
 results/penalty_ppo_0.3/*
 !results/penalty_ppo_0.3/summary.csv
 !results/penalty_ppo_0.3/summary_aggregated.csv
-=======
 !results/penalty_adjacent_ppo/
 results/penalty_adjacent_ppo/*
 !results/penalty_adjacent_ppo/summary_aggregated.csv
@@ -45,3 +44,22 @@ results/penalty_adjacent_05_ppo/*
 !results/penalty_adjacent_05_ppo/summary_aggregated.csv
 !results/penalty_adjacent_05_ppo/summary.csv
 
+# results/*
+# !results/**/*.csv
+# !results/vanilla_ppo/
+# results/vanilla_ppo/*
+# !results/vanilla_ppo/
+# !results/penalty_ppo/
+
+# results/*
+# !results/**/
+# !results/**/summary*.csv
+
+# Ignore everything in results
+results/**
+
+# Re-include directories (required)
+!results/**/
+
+# Re-include only summary CSVs
+!results/**/summary*.csv

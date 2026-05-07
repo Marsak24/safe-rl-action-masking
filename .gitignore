@@ -18,6 +18,7 @@ results/vanilla_ppo/*
 results/penalty_ppo/*
 !results/penalty_ppo/summary.csv
 !results/penalty_ppo/summary_aggregated.csv
+<<<<<<< HEAD
 !results/hybrid_variant1_ppo/
 results/hybrid_variant1_ppo/*
 !results/hybrid_variant1_ppo/high penalty/
@@ -34,3 +35,13 @@ results/hybrid_adaptive_ppo/*
 results/penalty_ppo_0.3/*
 !results/penalty_ppo_0.3/summary.csv
 !results/penalty_ppo_0.3/summary_aggregated.csv
+=======
+!results/penalty_adjacent_ppo/
+results/penalty_adjacent_ppo/*
+!results/penalty_adjacent_ppo/summary_aggregated.csv
+!results/penalty_adjacent_ppo/summary.csv
+!results/penalty_adjacent_05_ppo/
+results/penalty_adjacent_05_ppo/*
+!results/penalty_adjacent_05_ppo/summary_aggregated.csv
+!results/penalty_adjacent_05_ppo/summary.csv
+

@@ -1,5 +1,5 @@
+import argparse
 import os
-import json
 import random
 
 import numpy as np
@@ -19,14 +19,25 @@ from metrics.plot_results import (
 )
 
 
-BASE_DIR    = "results/penalty_ppo"
-MODELS_DIR  = os.path.join(BASE_DIR, "models")
-VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
-SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
-AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
-LAVA_PENALTY = 0.5
+# BASE_DIR    = "results/penalty_ppo"
+# MODELS_DIR  = os.path.join(BASE_DIR, "models")
+# VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+# SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+# AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+BASE_DIR = None
+MODELS_DIR = None
+VIDEOS_DIR = None
+SUMMARY_CSV = None
+AGG_CSV = None
 
-ENV_IDS = [
+LAVA_PENALTY = 0.5
+ADJACENT_PENALTY = 0.05#0.01
+# ENV_IDS = [
+#     "MiniGrid-LavaGapS5-v0",
+#     "MiniGrid-LavaGapS6-v0",
+#     "MiniGrid-LavaGapS7-v0",
+# ]
+DEFAULT_ENV_IDS = [
     "MiniGrid-LavaGapS5-v0",
     "MiniGrid-LavaGapS6-v0",
     "MiniGrid-LavaGapS7-v0",
@@ -56,8 +67,12 @@ def make_train_env(env_id: str, seed: int):
     env.reset(seed=seed)
     env.action_space.seed(seed)
     env = FlatObsWrapper(env)
-    env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
-
+    env = LavaPenaltyWrapper(
+        env,
+        lava_penalty=LAVA_PENALTY,
+        use_adjacent_penalty=args.use_adjacent_penalty,
+        adjacent_penalty=ADJACENT_PENALTY,
+    )
     return env
 
 
@@ -65,7 +80,13 @@ def make_video_env(env_id: str, video_folder: str, seed: int):
     env = gym.make(env_id, render_mode="rgb_array")
     env.reset(seed=seed)
     env = FlatObsWrapper(env)
-    env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
+    # env = LavaPenaltyWrapper(env, lava_penalty=LAVA_PENALTY)
+    env = LavaPenaltyWrapper(
+        env,
+        lava_penalty=LAVA_PENALTY,
+        use_adjacent_penalty=args.use_adjacent_penalty,
+        adjacent_penalty=ADJACENT_PENALTY,
+    )
     env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda x: True)
     return env
 
@@ -116,7 +137,28 @@ def set_seed(seed: int):
 
 
 
-def main():
+def main(args):
+    env_ids = args.env if args.env is not None else DEFAULT_ENV_IDS
+    global BASE_DIR, MODELS_DIR, VIDEOS_DIR, SUMMARY_CSV, AGG_CSV
+
+    # variant_name = "penalty_adjacent_ppo" if args.use_adjacent_penalty else "penalty_ppo"
+    # variant_name = "penalty_adjacent_05_ppo" if args.use_adjacent_penalty else "penalty_ppo"
+
+    variant_name = "penalty_adjacent_05_ppo" if args.use_adjacent_penalty else "penalty_ppo"
+
+    if args.result_suffix:
+        variant_name = f"{variant_name}_{args.result_suffix}"
+
+    BASE_DIR    = os.path.join("results", variant_name)
+    MODELS_DIR  = os.path.join(BASE_DIR, "models")
+    VIDEOS_DIR  = os.path.join(BASE_DIR, "videos")
+    SUMMARY_CSV = os.path.join(BASE_DIR, "summary.csv")
+    AGG_CSV     = os.path.join(BASE_DIR, "summary_aggregated.csv")
+
+    print("Variant:", variant_name)
+    print("Using adjacent penalty:", args.use_adjacent_penalty)
+
+
     for d in (BASE_DIR, MODELS_DIR, VIDEOS_DIR):
         os.makedirs(d, exist_ok=True)
 
@@ -124,13 +166,13 @@ def main():
 
     seed_csv_paths: dict[str, list[str]] = {
         env_id.replace("MiniGrid-", "").replace("-v0", "").lower(): []
-        for env_id in ENV_IDS
+        for env_id in env_ids
     }
 
     for seed in SEEDS:
         set_seed(seed)
 
-        for env_id in ENV_IDS:
+        for env_id in env_ids:
             env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
 
             env_out_dir = os.path.join(BASE_DIR, env_tag, f"seed_{seed}")
@@ -198,7 +240,7 @@ def main():
     )
     agg_df.to_csv(AGG_CSV)
 
-    for env_id in ENV_IDS:
+    for env_id in env_ids:
         env_tag = env_id.replace("MiniGrid-", "").replace("-v0", "").lower()
         plot_aggregated_curves(
             seed_csv_paths=seed_csv_paths[env_tag],
@@ -212,5 +254,15 @@ def main():
     print(agg_df)
 
 
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", nargs="+", default=None)
+    parser.add_argument("--result-suffix", type=str, default="")
+    parser.add_argument(
+        "--use-adjacent-penalty",
+        action="store_true",
+        help="Enable penalty for cells adjacent to lava",
+    )
+    args = parser.parse_args()
+    main(args)

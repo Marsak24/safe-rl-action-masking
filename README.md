@@ -112,7 +112,6 @@ Additional:
 * Rawan Darwich
 * Haifa Naim
 
-## Detailed Training Results and Plots
 
-[Resullts](https://mailaub-my.sharepoint.com/:f:/g/personal/shi12_mail_aub_edu/IgBuB5hg8Z3NQZLDu0Gp4B0VAYFsbAECKZFIwUh6kWbEHfk?e=JecLBw)
+[Detailed Training Results and Plots](https://mailaub-my.sharepoint.com/:f:/g/personal/shi12_mail_aub_edu/IgBuB5hg8Z3NQZLDu0Gp4B0VAYFsbAECKZFIwUh6kWbEHfk?e=JecLBw)
 ---
